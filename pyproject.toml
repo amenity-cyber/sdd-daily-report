@@ -1,0 +1,15 @@
+[project]
+name = "daily-report"
+version = "0.1.0"
+description = "智能日报生成器 — 从 GitHub / 飞书采集数据并自动生成团队日报"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx",
+    "pyyaml",
+    "jinja2",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

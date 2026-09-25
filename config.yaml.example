@@ -1,0 +1,39 @@
+# 智能日报生成器配置模板
+# 使用方式：复制为 config.yaml 并按实际环境填写
+
+team_name: "研发团队"
+
+# 成员身份映射表：关联各平台账号
+members:
+  - name: "张三"
+    github: "zhangsan"
+    lark: "zhangsan@company.com"
+  - name: "李四"
+    github: "lisi-dev"
+    lark: "lisi@company.com"
+  - name: "王五"
+    github: "wangwu"
+    lark: "wangwu@company.com"
+
+# GitHub 采集
+github:
+  repos:
+    - "org/repo-a"
+    - "org/repo-b"
+
+# 飞书采集
+lark:
+  project_id: "your-project-id"
+  chat_id: "your-chat-id"
+  keywords:
+    - "进度"
+    - "阻塞"
+    - "完成"
+
+# 推送
+notify:
+  email:
+    recipients:
+      - "leader@company.com"
+  lark_bot:
+    chat_id: "your-bot-chat-id"
