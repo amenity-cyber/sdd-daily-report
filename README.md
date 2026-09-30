@@ -7,7 +7,7 @@
 - specs目录存放SDD全套文档：proposal.md、design.md、tasks.md
 
 ## 仓库规范
-使用.gitignore过滤编译缓存等非源码文件。前期误提交__pycache__，已移除版本追踪。
+使用.gitignore过滤编译缓存等非源码文件，误提交的__pycache__已移除。
 
 ## 目录
 specs/、collector/、generator/、notifier/、shared/、tests/、web_ui/
