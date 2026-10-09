@@ -1,409 +1,11 @@
 <!doctype html>
-<!--
-  智能日报生成器 · 管理面板（UI 原型）
-  ------------------------------------------------------------------
-  用途：SDD（规范驱动开发）项目的 Vibe Coding 前端原型验证。
-  说明：纯静态页面，全部数据为页面内 Mock，不调用后端、不连接飞书 API。
-        可直接复制保存到项目 web_ui/index.html 目录下双击打开。
-
-  结构：
-    1. 顶栏（品牌 + 原型标识）
-    2. 左侧状态筛选栏
-    3. 主区：页头 / KPI 概览 / 搜索工具栏 / 任务表格
-    4. 日报详情弹窗（流水线 + 元信息 + 日报正文）
-    5. 轻提示 Toast
-
-  设计方向：Tech / Utility（Datadog / GitHub 风格）——数据密度优先。
-  约定：所有颜色走 :root token，不在别处写死色值。
--->
+<!-- OpenDesign 管理面板：由本地服务提供页面，数据来自 Mock 联调 API。 -->
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>智能日报生成器 · 管理面板</title>
-  <style>
-    /* ═══ 1. 设计 token ═══════════════════════════════════════════════
-       方向：Tech / Utility。仅在此处定义颜色，其余位置一律 var()。 */
-    :root {
-      --bg:      oklch(98% 0.005 250);   /* 页面底色 */
-      --surface: oklch(100% 0 0);        /* 卡片 / 弹窗表面 */
-      --fg:      oklch(22% 0.02 240);    /* 主文字 */
-      --muted:   oklch(50% 0.018 240);   /* 次级文字 */
-      --border:  oklch(90% 0.008 240);   /* 分隔线 */
-      --accent:  oklch(58% 0.16 145);    /* 品牌强调色（≤2 处/屏） */
-
-      /* 状态语义色（状态胶囊使用，不计入品牌强调色预算） */
-      --ok:   oklch(56% 0.14 150);       /* 已完成 */
-      --run:  oklch(58% 0.13 248);       /* 进行中 */
-      --idle: oklch(58% 0.015 240);      /* 未开始 */
-
-      /* 派生色 —— 由 token 现算，不新增固定色板 */
-      --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
-      --ok-soft:     color-mix(in oklch, var(--ok) 15%, transparent);
-      --run-soft:    color-mix(in oklch, var(--run) 15%, transparent);
-      --idle-soft:   color-mix(in oklch, var(--idle) 14%, transparent);
-      --fg-soft:     color-mix(in oklch, var(--fg) 5%, transparent);
-      --fg-softer:   color-mix(in oklch, var(--fg) 3%, transparent);
-      --scrim:       color-mix(in oklch, var(--fg) 42%, transparent);
-
-      /* 字体：数据密集型界面，单一无衬线族即可 */
-      --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
-      --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
-      --font-mono:    'JetBrains Mono', 'Cascadia Code', 'SF Mono', Consolas, ui-monospace, monospace;
-
-      --fs-h1: 30px;
-      --fs-h2: 19px;
-      --fs-body: 14px;
-      --fs-meta: 12.5px;
-
-      --gap-xs: 8px;
-      --gap-sm: 12px;
-      --gap-md: 16px;
-      --gap-lg: 24px;
-      --gap-xl: 40px;
-
-      --radius: 8px;
-      --radius-lg: 12px;
-      --shadow: 0 1px 2px color-mix(in oklch, var(--fg) 6%, transparent),
-                0 8px 24px color-mix(in oklch, var(--fg) 8%, transparent);
-      --topbar-h: 57px;
-    }
-
-    /* ═══ 2. 基础重置 ═════════════════════════════════════════════════ */
-    *, *::before, *::after { box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--fg);
-      font-family: var(--font-body);
-      font-size: var(--fs-body);
-      line-height: 1.55;
-      -webkit-font-smoothing: antialiased;
-    }
-    h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -0.01em; }
-    h1 { font-size: var(--fs-h1); font-weight: 650; line-height: 1.15; }
-    h2 { font-size: var(--fs-h2); font-weight: 600; }
-    h3 { font-size: 15px; font-weight: 600; }
-    p { margin: 0; text-wrap: pretty; }
-    a { color: inherit; text-decoration: none; }
-    button { font: inherit; color: inherit; cursor: pointer; }
-    /* 统一的键盘焦点环（使用状态蓝，避免占用品牌强调色） */
-    :focus-visible { outline: 2px solid var(--run); outline-offset: 2px; border-radius: 4px; }
-    .num, .meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-    .meta { font-size: var(--fs-meta); color: var(--muted); }
-    .sr-only {
-      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-    }
-
-    /* ═══ 3. 应用外壳 ═════════════════════════════════════════════════ */
-    .app { min-height: 100vh; display: flex; flex-direction: column; }
-
-    /* —— 顶栏 —— */
-    .topbar {
-      position: sticky; top: 0; z-index: 30;
-      height: var(--topbar-h);
-      background: color-mix(in oklch, var(--surface) 86%, transparent);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border);
-    }
-    .topbar-inner {
-      max-width: 1360px; height: 100%; margin-inline: auto;
-      padding-inline: var(--gap-lg);
-      display: flex; align-items: center; justify-content: space-between; gap: var(--gap-md);
-    }
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .brand-mark {
-      width: 28px; height: 28px; border-radius: 7px;
-      display: grid; place-items: center;
-      background: var(--fg); color: var(--surface);
-      font-family: var(--font-mono); font-size: 12px; font-weight: 700;
-    }
-    .brand-name { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
-    .pill {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 2px 9px; border-radius: 999px;
-      background: var(--fg-soft); color: var(--muted);
-      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
-    }
-    .pill--warn {
-      background: var(--idle-soft); color: color-mix(in oklch, var(--fg) 70%, var(--muted));
-    }
-    .topbar-actions { display: flex; align-items: center; gap: var(--gap-sm); }
-
-    /* —— 主体：侧栏 + 内容 —— */
-    .app-body {
-      flex: 1; width: 100%; max-width: 1360px; margin-inline: auto;
-      display: grid; grid-template-columns: 244px minmax(0, 1fr);
-    }
-    .sidebar {
-      border-right: 1px solid var(--border);
-      padding: var(--gap-lg) var(--gap-md);
-      position: sticky; top: var(--topbar-h);
-      align-self: start; height: calc(100vh - var(--topbar-h));
-      display: flex; flex-direction: column; gap: var(--gap-lg);
-    }
-    .nav-label {
-      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em;
-      text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
-    }
-    .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
-    .nav-item {
-      display: flex; align-items: center; justify-content: space-between;
-      width: 100%; min-height: 40px; padding: 8px 12px;
-      background: transparent; border: 0; border-left: 2px solid transparent;
-      border-radius: 0 var(--radius) var(--radius) 0;
-      color: var(--muted); font-size: 14px; text-align: left;
-      transition: background 0.14s ease, color 0.14s ease;
-    }
-    .nav-item:hover { background: var(--fg-softer); color: var(--fg); }
-    /* 当前筛选项：强调色第二次也是最后一次出现 */
-    .nav-item.is-active {
-      background: var(--accent-soft); border-left-color: var(--accent);
-      color: color-mix(in oklch, var(--accent) 72%, var(--fg)); font-weight: 600;
-    }
-    .nav-item .count { font-family: var(--font-mono); font-size: 12px; opacity: 0.85; }
-    .sidebar-foot { margin-top: auto; border-top: 1px solid var(--border); padding-top: var(--gap-md); }
-    .module-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .chip {
-      font-family: var(--font-mono); font-size: 11px; color: var(--muted);
-      border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px;
-    }
-
-    /* —— 主内容区 —— */
-    .main { min-width: 0; padding: var(--gap-xl) var(--gap-lg) 64px; }
-    .page-head {
-      display: flex; align-items: flex-end; justify-content: space-between;
-      gap: var(--gap-lg); margin-bottom: var(--gap-xl); flex-wrap: wrap;
-    }
-    .eyebrow {
-      font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.1em;
-      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
-    }
-    .page-head p.lead { color: var(--muted); max-width: 62ch; margin-top: 8px; }
-
-    /* ═══ 4. 按钮 ═════════════════════════════════════════════════════ */
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-      min-height: 40px; padding: 9px 16px;
-      border: 1px solid transparent; border-radius: var(--radius);
-      font-size: 14px; font-weight: 550; white-space: nowrap;
-      transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
-    }
-    .btn:active { transform: translateY(1px); }
-    .btn-primary { background: var(--accent); color: var(--surface); }
-    .btn-primary:hover { background: color-mix(in oklch, var(--accent) 86%, black); }
-    .btn-secondary { background: var(--surface); color: var(--fg); border-color: var(--border); }
-    .btn-secondary:hover { border-color: color-mix(in oklch, var(--fg) 45%, var(--border)); background: var(--fg-softer); }
-    .btn-ghost { background: transparent; color: var(--muted); border-color: transparent; }
-    .btn-ghost:hover { color: var(--fg); background: var(--fg-softer); }
-    .btn-sm { min-height: 32px; padding: 5px 12px; font-size: 13px; }
-
-    /* ═══ 5. KPI 概览 ═════════════════════════════════════════════════ */
-    .kpi-row {
-      display: grid; grid-template-columns: repeat(4, 1fr);
-      gap: var(--gap-md); margin-bottom: var(--gap-xl);
-    }
-    .kpi {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius-lg); padding: 18px 20px;
-    }
-    .kpi .kpi-label {
-      font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em;
-      text-transform: uppercase; color: var(--muted);
-    }
-    .kpi .kpi-value {
-      font-family: var(--font-display); font-size: 32px; font-weight: 650;
-      letter-spacing: -0.02em; margin-top: 8px; line-height: 1;
-      font-variant-numeric: tabular-nums;
-    }
-    .kpi .kpi-value .unit { font-size: 15px; color: var(--muted); font-weight: 500; margin-left: 3px; }
-    .kpi .kpi-sub { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
-
-    /* ═══ 6. 任务面板（工具栏 + 表格） ════════════════════════════════ */
-    .panel {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius-lg); overflow: hidden;
-    }
-    .toolbar {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: var(--gap-md); padding: 16px 20px; border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
-    }
-    .search {
-      position: relative; flex: 1 1 260px; max-width: 380px;
-    }
-    .search svg {
-      position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
-      width: 15px; height: 15px; color: var(--muted); pointer-events: none;
-    }
-    .search input {
-      width: 100%; min-height: 40px; padding: 9px 14px 9px 34px;
-      border: 1px solid var(--border); border-radius: var(--radius);
-      background: var(--bg); color: var(--fg); font: inherit; font-size: 14px;
-    }
-    .search input::placeholder { color: color-mix(in oklch, var(--muted) 80%, transparent); }
-    .search input:focus { outline: 2px solid var(--run-soft); border-color: var(--run); }
-
-    .table-wrap { width: 100%; }
-    table.ds-table {
-      width: 100%; border-collapse: collapse; font-size: 14px;
-    }
-    .ds-table th, .ds-table td {
-      padding: 13px 20px; text-align: left; border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
-    .ds-table th {
-      font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em;
-      text-transform: uppercase; color: var(--muted); font-weight: 500;
-      background: var(--fg-softer);
-    }
-    .ds-table tbody tr { cursor: pointer; transition: background 0.12s ease; }
-    .ds-table tbody tr:last-child td { border-bottom: 0; }
-    /* 悬停：背景加深，文字颜色不变（对比度只增不减） */
-    .ds-table tbody tr:hover { background: var(--fg-soft); }
-    .cell-id { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-    .cell-main { font-weight: 550; }
-    .cell-sub { margin-top: 3px; }
-    .col-action { text-align: right; white-space: nowrap; }
-
-    /* —— 状态胶囊 —— */
-    .badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 3px 10px; border-radius: 999px;
-      font-size: 12.5px; font-weight: 550; white-space: nowrap;
-    }
-    .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-    .badge-ok   { background: var(--ok-soft);   color: color-mix(in oklch, var(--ok) 78%, var(--fg)); }
-    .badge-run  { background: var(--run-soft);  color: color-mix(in oklch, var(--run) 78%, var(--fg)); }
-    .badge-idle { background: var(--idle-soft); color: color-mix(in oklch, var(--idle) 74%, var(--fg)); }
-    .badge-run .dot { animation: pulse 1.5s ease-in-out infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-
-    /* —— 空状态 —— */
-    .empty { padding: 64px 24px; text-align: center; color: var(--muted); }
-    .empty strong { display: block; color: var(--fg); font-size: 15px; margin-bottom: 6px; }
-
-    /* ═══ 7. 详情弹窗 ═════════════════════════════════════════════════ */
-    .modal-backdrop {
-      position: fixed; inset: 0; z-index: 50;
-      background: var(--scrim); backdrop-filter: blur(2px);
-      display: flex; align-items: flex-start; justify-content: center;
-      padding: 48px 20px; overflow-y: auto;
-    }
-    .modal-backdrop[hidden] { display: none; }
-    .modal {
-      width: 100%; max-width: 720px; background: var(--surface);
-      border: 1px solid var(--border); border-radius: var(--radius-lg);
-      box-shadow: var(--shadow); overflow: hidden;
-      animation: rise 0.18s ease-out;
-    }
-    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-    .modal-head {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      gap: var(--gap-md); padding: 20px 24px; border-bottom: 1px solid var(--border);
-    }
-    .modal-head h2 { margin: 8px 0 6px; }
-    .icon-btn {
-      flex: none; width: 34px; height: 34px; display: grid; place-items: center;
-      background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
-      color: var(--muted); font-size: 18px; line-height: 1;
-    }
-    .icon-btn:hover { color: var(--fg); background: var(--fg-soft); border-color: color-mix(in oklch, var(--fg) 40%, var(--border)); }
-    .modal-body { padding: 24px; display: flex; flex-direction: column; gap: var(--gap-lg); }
-    .modal-foot {
-      display: flex; align-items: center; justify-content: flex-end; gap: var(--gap-sm);
-      padding: 16px 24px; border-top: 1px solid var(--border); background: var(--fg-softer);
-    }
-
-    /* —— 流水线（collector → generator → notifier） —— */
-    .pipeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-sm); }
-    .step {
-      border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 12px 14px; background: var(--surface);
-    }
-    .step-top { display: flex; align-items: center; gap: 8px; }
-    .step-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); flex: none; }
-    .step.is-ok .step-dot   { background: var(--ok); }
-    .step.is-run .step-dot  { background: var(--run); animation: pulse 1.5s ease-in-out infinite; }
-    .step-name { font-weight: 600; font-size: 13.5px; }
-    .step-mod  { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-top: 3px; }
-    .step-time { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-top: 8px; }
-
-    /* —— 元信息栅格 —— */
-    .meta-grid {
-      display: grid; grid-template-columns: repeat(2, 1fr);
-      gap: 1px; background: var(--border);
-      border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
-    }
-    .meta-cell { background: var(--surface); padding: 12px 14px; }
-    .meta-cell .meta-key {
-      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em;
-      text-transform: uppercase; color: var(--muted);
-    }
-    .meta-cell .meta-val { margin-top: 5px; font-size: 14px; word-break: break-word; }
-
-    /* —— 日报正文 —— */
-    .report-head {
-      display: flex; align-items: center; gap: 10px;
-      padding-bottom: 10px; border-bottom: 1px solid var(--fg);
-    }
-    .report-sec + .report-sec { margin-top: 18px; }
-    .report-sec h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-    .report-sec h3::before {
-      content: ''; width: 3px; height: 14px; border-radius: 2px;
-      background: var(--fg); opacity: 0.35;
-    }
-    .report-sec ul { margin: 0; padding-left: 18px; color: var(--fg); }
-    .report-sec li { margin: 4px 0; }
-    .report-sec li::marker { color: var(--muted); }
-    .report-empty {
-      border: 1px dashed var(--border); border-radius: var(--radius);
-      padding: 28px 20px; text-align: center; color: var(--muted);
-    }
-
-    /* ═══ 8. Toast ════════════════════════════════════════════════════ */
-    .toast {
-      position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
-      z-index: 60; display: flex; align-items: center; gap: 10px;
-      padding: 12px 18px; border-radius: var(--radius);
-      background: var(--fg); color: var(--surface);
-      font-size: 14px; box-shadow: var(--shadow);
-      animation: rise 0.18s ease-out;
-    }
-    .toast[hidden] { display: none; }
-    .toast::before {
-      content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
-    }
-
-    /* ═══ 9. 响应式：≤920px 侧栏横向、表格精简 ═══════════════════════ */
-    @media (max-width: 920px) {
-      .app-body { grid-template-columns: 1fr; }
-      .sidebar {
-        position: static; height: auto; border-right: 0;
-        border-bottom: 1px solid var(--border); padding: var(--gap-md) var(--gap-lg);
-      }
-      .sidebar nav { flex-direction: row; flex-wrap: wrap; }
-      .nav-item {
-        width: auto; border-left: 0; border-bottom: 2px solid transparent;
-        border-radius: var(--radius);
-      }
-      .nav-item.is-active { border-left-color: transparent; border-bottom-color: var(--accent); }
-      .sidebar-foot { margin-top: 0; }
-      .kpi-row { grid-template-columns: repeat(2, 1fr); }
-      .main { padding: var(--gap-lg) var(--gap-lg) 48px; }
-    }
-    @media (max-width: 720px) {
-      .col-time, .col-dur { display: none; }
-      .meta-grid { grid-template-columns: 1fr; }
-      .pipeline { grid-template-columns: 1fr; }
-      .kpi-row { grid-template-columns: 1fr; }
-      .ds-table th, .ds-table td { padding: 12px 14px; }
-      .toolbar { padding: 14px; }
-      .modal-backdrop { padding: 16px; }
-    }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <div class="app">
@@ -414,11 +16,11 @@
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">DR</span>
         <span class="brand-name">智能日报生成器</span>
-        <span class="pill">SDD · v0.1</span>
+        <span class="pill">SDD · v0.2</span>
       </div>
       <div class="topbar-actions">
-        <!-- 明确告知这是原型，避免被误认为真实数据 -->
-        <span class="pill pill--warn">Mock 数据 · 原型验证</span>
+        <!-- 明确标记模拟数据范围 -->
+        <span class="pill pill--warn">模拟数据 · 本地联调</span>
         <button class="btn btn-ghost btn-sm" type="button" id="aboutBtn">关于</button>
       </div>
     </div>
@@ -430,21 +32,16 @@
     <aside class="sidebar" data-od-id="sidebar">
       <nav aria-label="按状态筛选任务">
         <p class="nav-label">任务状态</p>
-        <!-- data-filter 的值与 Mock 数据中的 status 保持一致 -->
+        <!-- 状态筛选与后端状态一致 -->
         <button class="nav-item is-active" type="button" data-filter="all">全部任务 <span class="count" data-count="all">0</span></button>
         <button class="nav-item" type="button" data-filter="未开始">未开始 <span class="count" data-count="未开始">0</span></button>
         <button class="nav-item" type="button" data-filter="进行中">进行中 <span class="count" data-count="进行中">0</span></button>
         <button class="nav-item" type="button" data-filter="已完成">已完成 <span class="count" data-count="已完成">0</span></button>
       </nav>
       <div class="sidebar-foot">
-        <p class="nav-label">后端模块</p>
-        <div class="module-chips">
-          <span class="chip">collector</span>
-          <span class="chip">generator</span>
-          <span class="chip">notifier</span>
-          <span class="chip">shared</span>
-        </div>
-        <p class="meta" style="margin-top: 10px;">specs / tests 见项目目录</p>
+        <p class="nav-label">演示说明</p>
+        <p class="meta">日报使用模拟工作记录生成，保存到本机。演示不发送邮件或飞书通知。</p>
+
       </div>
     </aside>
 
@@ -456,13 +53,19 @@
         <div>
           <p class="eyebrow">Daily Report · 管理面板</p>
           <h1>日报任务</h1>
-          <p class="lead">统一查看智能日报的采集、生成与推送状态，点击任意任务行即可查看日报详情。</p>
+          <p class="lead">从模拟工作记录生成完整日报，保存在本机，随时查看、复制或导出。同一天再次生成会更新当日日报。</p>
         </div>
         <!-- 本页唯一的主操作按钮 -->
-        <button class="btn btn-primary" type="button" id="createBtn">
+        <button class="btn btn-primary" type="button" id="createBtn" disabled>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           生成新日报
         </button>
+      </div>
+
+      <p id="loadStatus" class="load-status" role="status">正在加载日报…</p>
+      <div id="loadError" class="load-error" role="alert" hidden>
+        <span id="loadErrorText"></span>
+        <button id="retryBtn" class="btn btn-secondary btn-sm" type="button">重新加载</button>
       </div>
 
       <!-- KPI 概览 -->
@@ -475,17 +78,17 @@
         <div class="kpi">
           <div class="kpi-label">进行中</div>
           <div class="kpi-value num" id="kpiRunning">0</div>
-          <div class="kpi-sub">正在生成或推送中</div>
+          <div class="kpi-sub">当前页面正在生成的日报</div>
         </div>
         <div class="kpi">
           <div class="kpi-label">已完成</div>
           <div class="kpi-value num" id="kpiDone">0</div>
-          <div class="kpi-sub">已生成并成功推送</div>
+          <div class="kpi-sub">已生成并保存到本机</div>
         </div>
         <div class="kpi">
-          <div class="kpi-label">平均生成耗时</div>
-          <div class="kpi-value num" id="kpiAvg">0.0<span class="unit">s</span></div>
-          <div class="kpi-sub">已完成任务的流水线耗时均值</div>
+          <div class="kpi-label">最近日报日期</div>
+          <div class="kpi-value num kpi-date" id="kpiDate">—</div>
+          <div class="kpi-sub">来自本地保存的日报记录</div>
         </div>
       </section>
 
@@ -508,7 +111,6 @@
                 <th scope="col">任务名称</th>
                 <th scope="col">状态</th>
                 <th scope="col" class="col-time">生成时间</th>
-                <th scope="col" class="col-dur">耗时</th>
                 <th scope="col" class="col-action">操作</th>
               </tr>
             </thead>
@@ -519,8 +121,8 @@
 
         <!-- 空状态 -->
         <div class="empty" id="emptyState" hidden>
-          <strong>没有匹配的任务</strong>
-          请调整筛选条件或搜索关键词。
+          <strong id="emptyTitle">暂无日报</strong>
+          <span id="emptyDescription">点击生成新日报开始。</span>
         </div>
       </section>
     </main>
@@ -549,454 +151,6 @@
 <!-- ═══ 轻提示 ═══ -->
 <div class="toast" id="toast" role="status" hidden></div>
 
-<script>
-/* ═══════════════════════════════════════════════════════════════════
-   Mock 数据层
-   -------------------------------------------------------------------
-   全部为页面内静态数据，仅用于 UI 原型验证，不请求任何后端接口。
-   新增任务时会在内存数组中插入一条记录。
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* 状态 → 展示配置（badge 类名 + 文案） */
-const STATUS_MAP = {
-  '未开始': { cls: 'badge-idle', label: '未开始' },
-  '进行中': { cls: 'badge-run',  label: '进行中' },
-  '已完成': { cls: 'badge-ok',   label: '已完成' }
-};
-
-/* 流水线三个阶段，对应后端 collector / generator / notifier 模块 */
-const STAGE_DEFS = [
-  { key: 'collector', name: '采集', mod: 'collector' },
-  { key: 'generator', name: '生成', mod: 'generator' },
-  { key: 'notifier',  name: '推送', mod: 'notifier'  }
-];
-
-/* 任务列表 Mock —— id 采用 DR-日期-序号 规则 */
-const TASKS = [
-  {
-    id: 'DR-20260930-01',
-    name: '研发团队每日站会日报',
-    status: '已完成',
-    owner: '林晓',
-    createdAt: '2026-09-30 09:30',
-    schedule: '每天 09:30',
-    duration: '2.5s',
-    source: '飞书站会记录 · Git 提交 · Jira',
-    recipients: '研发一组（12 人）',
-    stages: { collector: '1.2s', generator: '0.9s', notifier: '0.4s' },
-    report: {
-      overview: ['覆盖研发一组 12 名成员，同步昨日站会记录、Git 提交与 Merge Request。'],
-      progress: ['完成 3 个需求评审，其中 2 个已进入开发。', '合并 MR 14 个，关闭 Issue 9 个。', '站会出勤 12 / 12，无缺席。'],
-      risks: ['支付模块联调较计划延期 1 天，依赖第三方沙箱环境开放。'],
-      plans: ['完成支付回调联调并补充用例。', '启动订单中心灰度发布。']
-    }
-  },
-  {
-    id: 'DR-20260930-02',
-    name: '产品迭代进展日报',
-    status: '已完成',
-    owner: '王磊',
-    createdAt: '2026-09-30 10:00',
-    schedule: '工作日 10:00',
-    duration: '3.1s',
-    source: '产品 backlog · 迭代看板',
-    recipients: '产品委员会',
-    stages: { collector: '1.5s', generator: '1.2s', notifier: '0.4s' },
-    report: {
-      overview: ['汇总产品 backlog、需求池状态与本周迭代燃尽情况。'],
-      progress: ['迭代 9 完成度 82%，剩余 3 个故事点。', '本周新增需求 4 条，其中 2 条为优化类。'],
-      risks: ['2 条需求变更待评审，可能影响本迭代范围。'],
-      plans: ['完成剩余故事点并组织需求评审会。']
-    }
-  },
-  {
-    id: 'DR-20260930-03',
-    name: '线上问题跟进日报',
-    status: '进行中',
-    owner: '陈静',
-    createdAt: '2026-09-30 11:15',
-    schedule: '每天 11:15',
-    duration: '—',
-    source: '告警平台 · 工单系统',
-    recipients: '运维与后端组',
-    stages: { collector: '1.1s', generator: 'running', notifier: 'pending' },
-    report: {
-      overview: ['追踪线上告警、工单与修复进度，问题闭环情况。'],
-      progress: ['昨日告警 6 条，已修复 5 条。', 'P1 工单 1 条仍在处理中。'],
-      risks: ['数据库慢查询问题尚未根治，存在复发风险。'],
-      plans: ['定位慢查询根因。', '补充监控看板与告警阈值。']
-    }
-  },
-  {
-    id: 'DR-20260930-04',
-    name: '测试覆盖率日报',
-    status: '进行中',
-    owner: '赵鹏',
-    createdAt: '2026-09-30 11:40',
-    schedule: '工作日 11:40',
-    duration: '—',
-    source: 'CI 流水线 · pytest 报告',
-    recipients: '研发一组',
-    stages: { collector: '0.8s', generator: 'running', notifier: 'pending' },
-    report: {
-      overview: ['统计各模块单元测试覆盖率与失败用例。'],
-      progress: ['整体覆盖率 78%，collector 模块达到 86%。'],
-      risks: ['generator 模块新增代码覆盖率不足 60%。'],
-      plans: ['补充 generator 模块单测。', '修复 3 个失败用例。']
-    }
-  },
-  {
-    id: 'DR-20260930-05',
-    name: '数据平台运维日报',
-    status: '未开始',
-    owner: '周敏',
-    createdAt: '2026-09-30 18:30',
-    schedule: '每天 18:30',
-    duration: '—',
-    source: '数据平台监控',
-    recipients: '数据平台组',
-    stages: { collector: 'pending', generator: 'pending', notifier: 'pending' },
-    report: null
-  },
-  {
-    id: 'DR-20260930-06',
-    name: '安全告警摘要日报',
-    status: '未开始',
-    owner: '王磊',
-    createdAt: '2026-09-30 19:00',
-    schedule: '每天 19:00',
-    duration: '—',
-    source: 'WAF · 主机安全',
-    recipients: '安全响应小组',
-    stages: { collector: 'pending', generator: 'pending', notifier: 'pending' },
-    report: null
-  },
-  {
-    id: 'DR-20260929-12',
-    name: '客户反馈汇总日报',
-    status: '已完成',
-    owner: '林晓',
-    createdAt: '2026-09-29 20:00',
-    schedule: '每天 20:00',
-    duration: '2.8s',
-    source: '客服工单 · 应用内反馈',
-    recipients: '产品与客服团队',
-    stages: { collector: '1.3s', generator: '1.1s', notifier: '0.4s' },
-    report: {
-      overview: ['汇总客服工单与应用内反馈，提炼高频问题。'],
-      progress: ['收集反馈 48 条，归类为 6 大类。', '高频问题为「导出报表失败」，占 11 条。'],
-      risks: ['导出失败问题需产品侧确认修复优先级。'],
-      plans: ['输出问题清单并同步产品团队。']
-    }
-  }
-];
-
-/* ═══════════════════════════════════════════════════════════════════
-   状态与工具
-   ═══════════════════════════════════════════════════════════════════ */
-let currentFilter = 'all';   // 当前状态筛选
-let currentQuery  = '';      // 当前搜索关键词
-let toastTimer = null;       // Toast 定时器
-
-const $ = (sel) => document.querySelector(sel);
-
-/* 按当前筛选与搜索条件过滤任务 */
-function getVisibleTasks () {
-  const q = currentQuery.trim().toLowerCase();
-  return TASKS.filter((t) => {
-    const matchFilter = currentFilter === 'all' || t.status === currentFilter;
-    const matchQuery = !q ||
-      t.id.toLowerCase().includes(q) ||
-      t.name.toLowerCase().includes(q) ||
-      t.owner.toLowerCase().includes(q);
-    return matchFilter && matchQuery;
-  });
-}
-
-/* 转义，避免 Mock 文本中的特殊字符破坏结构 */
-function esc (str) {
-  return String(str).replace(/[&<>"]/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
-  ));
-}
-
-/* 阶段状态映射：完成 / 运行中 / 未开始 */
-function stageClass (val) {
-  if (val === 'pending') return 'is-idle';
-  if (val === 'running') return 'is-run';
-  return 'is-ok';
-}
-function stageTime (val) {
-  if (val === 'pending') return '等待中';
-  if (val === 'running') return '进行中…';
-  return val;
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   渲染：表格 + 计数 + KPI
-   ═══════════════════════════════════════════════════════════════════ */
-function renderTable () {
-  const rows = getVisibleTasks();
-  const body = $('#taskBody');
-  const empty = $('#emptyState');
-
-  // 无结果时展示空状态
-  if (rows.length === 0) {
-    body.innerHTML = '';
-    empty.hidden = false;
-  } else {
-    empty.hidden = true;
-    body.innerHTML = rows.map((t) => {
-      const s = STATUS_MAP[t.status];
-      return `
-        <tr data-id="${t.id}" tabindex="0">
-          <td class="cell-id">${esc(t.id)}</td>
-          <td>
-            <div class="cell-main">${esc(t.name)}</div>
-            <div class="cell-sub meta">负责人 ${esc(t.owner)} · ${esc(t.schedule)}</div>
-          </td>
-          <td><span class="badge ${s.cls}"><span class="dot"></span>${s.label}</span></td>
-          <td class="col-time num">${esc(t.createdAt)}</td>
-          <td class="col-dur num">${esc(t.duration)}</td>
-          <td class="col-action">
-            <button class="btn btn-secondary btn-sm" type="button" data-view="${t.id}">查看详情</button>
-          </td>
-        </tr>`;
-    }).join('');
-  }
-
-  const all = TASKS.length;
-  $('#resultCount').textContent = `共 ${rows.length} 条 · 全部 ${all} 条`;
-  renderCounts();
-  renderKpi();
-}
-
-/* 侧栏每个状态的计数 */
-function renderCounts () {
-  const counts = { all: TASKS.length, '未开始': 0, '进行中': 0, '已完成': 0 };
-  TASKS.forEach((t) => { counts[t.status] += 1; });
-  document.querySelectorAll('[data-count]').forEach((el) => {
-    el.textContent = counts[el.dataset.count] ?? 0;
-  });
-}
-
-/* KPI 概览数值（由 Mock 数据实时计算） */
-function renderKpi () {
-  const done = TASKS.filter((t) => t.status === '已完成');
-  const running = TASKS.filter((t) => t.status === '进行中').length;
-
-  $('#kpiTotal').textContent = TASKS.length;
-  $('#kpiRunning').textContent = running;
-  $('#kpiDone').textContent = done.length;
-
-  // 已完成任务的平均耗时（解析 "x.xs"）
-  const secs = done
-    .map((t) => parseFloat(t.duration))
-    .filter((n) => !isNaN(n));
-  const avg = secs.length ? (secs.reduce((a, b) => a + b, 0) / secs.length) : 0;
-  $('#kpiAvg').innerHTML = `${avg.toFixed(1)}<span class="unit">s</span>`;
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   详情弹窗
-   ═══════════════════════════════════════════════════════════════════ */
-function openDetail (id) {
-  const t = TASKS.find((x) => x.id === id);
-  if (!t) return;
-
-  const s = STATUS_MAP[t.status];
-  $('#modalBadge').className = `badge ${s.cls}`;
-  $('#modalBadge').innerHTML = `<span class="dot"></span>${s.label}`;
-  $('#modalTitle').textContent = t.name;
-  $('#modalSubtitle').textContent = `${t.id} · 负责人 ${t.owner}`;
-
-  // 流水线三阶段
-  const pipeline = STAGE_DEFS.map((d) => {
-    const val = t.stages[d.key];
-    return `
-      <div class="step ${stageClass(val)}">
-        <div class="step-top"><span class="step-dot"></span><span class="step-name">${d.name}</span></div>
-        <div class="step-mod">${d.mod}</div>
-        <div class="step-time">${stageTime(val)}</div>
-      </div>`;
-  }).join('');
-
-  // 元信息
-  const metas = [
-    ['任务编号', t.id], ['负责人', t.owner],
-    ['调度计划', t.schedule], ['数据来源', t.source],
-    ['接收范围', t.recipients], ['流水线耗时', t.duration]
-  ].map(([k, v]) => `
-      <div class="meta-cell">
-        <div class="meta-key">${esc(k)}</div>
-        <div class="meta-val">${esc(v)}</div>
-      </div>`).join('');
-
-  // 日报正文：未开始的任务给出明确占位说明
-  let reportHtml;
-  if (!t.report) {
-    reportHtml = `
-      <div class="report-empty">
-        该任务尚未运行，日报正文将在采集 → 生成 → 推送完成后生成。
-      </div>`;
-  } else {
-    const sec = (title, list) => `
-      <div class="report-sec">
-        <h3>${title}</h3>
-        <ul>${list.map((li) => `<li>${esc(li)}</li>`).join('')}</ul>
-      </div>`;
-    reportHtml = `
-      <div class="report-head">
-        <span class="meta">日报正文 · 由 generator 生成</span>
-      </div>
-      ${sec('今日概览', t.report.overview)}
-      ${sec('关键进展', t.report.progress)}
-      ${sec('风险与阻塞', t.report.risks)}
-      ${sec('明日计划', t.report.plans)}`;
-  }
-
-  $('#modalBody').innerHTML = `
-    <div>
-      <p class="nav-label">处理流水线</p>
-      <div class="pipeline">${pipeline}</div>
-    </div>
-    <div>
-      <p class="nav-label">任务信息</p>
-      <div class="meta-grid">${metas}</div>
-    </div>
-    <div>${reportHtml}</div>`;
-
-  $('#modalBackdrop').hidden = false;
-  document.body.style.overflow = 'hidden';
-  $('#modalClose').focus();
-}
-
-function closeDetail () {
-  $('#modalBackdrop').hidden = true;
-  document.body.style.overflow = '';
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   轻提示
-   ═══════════════════════════════════════════════════════════════════ */
-function toast (msg) {
-  const el = $('#toast');
-  el.textContent = msg;
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
-}
-
-/* 生成一条新的未开始任务，验证列表交互 */
-function createTask () {
-  const seq = String(TASKS.length + 1).padStart(2, '0');
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const id = `DR-${stamp}-${seq}`;
-
-  TASKS.unshift({
-    id,
-    name: '临时汇总日报（手动触发）',
-    status: '未开始',
-    owner: '当前用户',
-    createdAt: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
-    schedule: '手动触发',
-    duration: '—',
-    source: '手动触发',
-    recipients: '当前用户',
-    stages: { collector: 'pending', generator: 'pending', notifier: 'pending' },
-    report: null
-  });
-
-  // 新建后回到「全部」视图，确保新任务可见
-  currentFilter = 'all';
-  currentQuery = '';
-  $('#searchInput').value = '';
-  syncNavActive();
-  renderTable();
-  toast(`已创建任务 ${id}`);
-}
-
-/* 同步侧栏选中态 */
-function syncNavActive () {
-  document.querySelectorAll('.nav-item').forEach((el) => {
-    el.classList.toggle('is-active', el.dataset.filter === currentFilter);
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   事件绑定
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* 侧栏筛选 */
-document.querySelectorAll('.nav-item').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    currentFilter = btn.dataset.filter;
-    syncNavActive();
-    saveState();
-    renderTable();
-  });
-});
-
-/* 搜索（输入过滤） */
-$('#searchInput').addEventListener('input', (e) => {
-  currentQuery = e.target.value;
-  saveState();
-  renderTable();
-});
-
-/* 表格：行点击 / 详情按钮（事件委托） */
-$('#taskBody').addEventListener('click', (e) => {
-  const viewBtn = e.target.closest('[data-view]');
-  if (viewBtn) { openDetail(viewBtn.dataset.view); return; }
-  const row = e.target.closest('tr[data-id]');
-  if (row) openDetail(row.dataset.id);
-});
-/* 键盘可达：回车打开行详情 */
-$('#taskBody').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    const row = e.target.closest('tr[data-id]');
-    if (row) openDetail(row.dataset.id);
-  }
-});
-
-/* 新建任务 */
-$('#createBtn').addEventListener('click', createTask);
-
-/* 关闭弹窗：按钮 / 遮罩 / Esc */
-$('#modalClose').addEventListener('click', closeDetail);
-$('#modalBackdrop').addEventListener('click', (e) => {
-  if (e.target === $('#modalBackdrop')) closeDetail();
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('#modalBackdrop').hidden) closeDetail();
-});
-
-/* 弹窗底部操作（原型阶段仅提示，不产生真实副作用） */
-$('#modalExport').addEventListener('click', () => toast('原型演示：将导出为 Markdown 文件'));
-$('#modalCopy').addEventListener('click', () => toast('原型演示：日报正文已复制到剪贴板'));
-$('#aboutBtn').addEventListener('click', () => toast('UI 原型 · Mock 数据，未连接后端服务'));
-
-/* ═══════════════════════════════════════════════════════════════════
-   初始化
-   ═══════════════════════════════════════════════════════════════════ */
-function saveState () {
-  try {
-    localStorage.setItem('dr.filter', currentFilter);
-    localStorage.setItem('dr.query', currentQuery);
-  } catch (_) { /* 隐私模式下忽略 */ }
-}
-function loadState () {
-  try {
-    currentFilter = localStorage.getItem('dr.filter') || 'all';
-    currentQuery = localStorage.getItem('dr.query') || '';
-  } catch (_) { /* 忽略 */ }
-  $('#searchInput').value = currentQuery;
-}
-
-loadState();
-syncNavActive();
-renderTable();
-</script>
+<script src="app.js" defer></script>
 </body>
 </html>
