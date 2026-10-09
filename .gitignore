@@ -18,3 +18,7 @@ Thumbs.db
 # IDE配置
 .vscode/
 .idea/
+
+# 本地 Web 演示数据与端到端测试结果
+data/
+test-results/
