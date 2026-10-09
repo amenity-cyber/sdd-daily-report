@@ -231,7 +231,7 @@ def send(report: DailyReport, chat_id: str) -> bool
 
 
 ## Web前端模块设计
-前端文件统一存放目录：`web/`
+前端文件统一存放目录：`web_ui/`（沿用 OpenDesign 导入目录）
 - index.html：主页面
 - style.css：页面样式
 - app.js：交互逻辑、后端接口请求
@@ -243,4 +243,17 @@ def send(report: DailyReport, chat_id: str) -> bool
 
 前后端交互约定：
 前端调用后端本地http接口获取日报列表、触发生成日报；
-底层复用外部适配器抽象层，默认使用MockExternalAdapter。
+底层使用 `web_backend/mock_adapter.py` 的 MockExternalAdapter，复用现有日报数据模型、生成器与 SQLite 存储。
+
+### 2026-10-09：Superpowers 联调实现
+
+- `web_server.py` 默认监听 `127.0.0.1:8765`，同源提供页面及 API；不增加运行依赖。
+- `GET /api/reports` 返回 `{"reports": [...]}`；列表仅含元数据。
+- `POST /api/reports` 接受空体或 `{}`，同步 Mock 采集、生成、保存，返回 `{"report": {...}}`。
+- `GET /api/reports/<id>` 返回完整 Markdown/HTML；未知 ID 为 404。
+- `GET /api/health` 返回运行状态和 `mode="mock"`。
+- 数据库默认为 `data/web_reports.db`；沿用按日期与团队唯一的规则，同日重复生成更新当日正文。
+- 前端按文本展示 Markdown，实际写入剪贴板，使用 Blob 下载 UTF-8 文件；支持错误提示、重试、请求超时和窄屏布局。
+- 本轮完成状态表示生成并本地保存，不表示真实通知成功；不伪造采集、生成或推送耗时。
+- 静态文件显式白名单；非法请求为 4xx；内部错误返回可读 500 JSON，不返回堆栈。
+- CLI 定时入口仍使用 `main.py`；本地常驻服务仅用于本轮演示，区分于原定时运行模式。

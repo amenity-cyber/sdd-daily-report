@@ -99,3 +99,11 @@
 
 ### 工具说明
 UI原型由OpenDesign生成，之后使用Cursor(Vibe Coding)对导出代码微调、对接后端接口，遵循SDD：先定义spec，再产出UI与代码。
+
+## 2026-10-09：Superpowers 前后端联调
+
+用户批准设计与实施计划后，在原项目补齐本地 HTTP 接口、MockExternalAdapter、实际日报生成与 SQLite 历史存储，保留 OpenDesign 页面结构。
+
+本轮验收范围：本地 API 加载列表；生成完整三部分正文；同日更新、刷新及服务重启保留内容；详情查看；实际复制与 Markdown 下载；错误提示和重试；桌面与窄屏布局；已有测试回归。
+
+模拟演示不依赖第三方凭据、不发送真实通知。原规范的真实 GitHub/飞书/邮件、节假日调度等验收不因本轮 Mock 验证而标记通过。设计与测试证据见 `docs/superpowers/`。
