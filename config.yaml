@@ -1,0 +1,22 @@
+team_name: "复杂系统安全性和可靠性实验室"
+
+members:
+  - name: "闫宣妤"
+    github: "yanxuanyu"
+    lark: "yanxuanyu@company.com"
+
+github:
+  repos:
+    - "amenity-cyber/sdd-daily-report"
+
+lark:
+  project_id: "mock-proj"
+  chat_id: "mock-chat"
+  keywords: ["项目"]
+
+notify:
+  email:
+    recipients:
+      - "1550904305@qq.com"
+  lark_bot:
+    chat_id: "mock-lark-chat"
