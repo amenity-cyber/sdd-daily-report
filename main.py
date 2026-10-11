@@ -29,7 +29,7 @@ def run_check(config) -> bool:
     try:
         assert config.team_name, "team_name 未配置"
         assert config.members, "members 未配置"
-        assert config.github_repos, "github.repos 未配置"
+        assert config.github.repos, "github.repos 未配置"
         logger.info(f"配置检查通过：团队={config.team_name}, 成员数={len(config.members)}")
         logger.info("健康检查完成")
         return True
@@ -57,7 +57,7 @@ def collect_all(config, since: datetime, until: datetime) -> dict:
 
     # 1. GitHub 采集
     try:
-        commits = github.collect(config.github_repos, since, until)
+        commits = github.collect(config.github.repos, since, until)
         logger.info(f"GitHub 采集到 {len(commits)} 条 commit")
         for m in config.members:
             reports[m.name].commits = [c for c in commits if c.author == m.github]
@@ -66,7 +66,7 @@ def collect_all(config, since: datetime, until: datetime) -> dict:
 
     # 2. 飞书任务采集
     try:
-        tasks = lark_task.collect(config.lark_project_id, since, until)
+        tasks = lark_task.collect(config.lark.project_id, since, until)
         logger.info(f"飞书任务采集到 {len(tasks)} 条")
         for m in config.members:
             reports[m.name].tasks = [t for t in tasks if t.assignee == m.lark]
@@ -75,7 +75,7 @@ def collect_all(config, since: datetime, until: datetime) -> dict:
 
     # 3. 飞书消息采集
     try:
-        messages = lark_msg.collect(config.lark_chat_id, config.lark_keywords, since, until)
+        messages = lark_msg.collect(config.lark.chat_id, config.lark.keywords, since, until)
         logger.info(f"飞书消息采集到 {len(messages)} 条")
         for m in config.members:
             reports[m.name].messages = [msg for msg in messages if msg.sender == m.lark]
@@ -136,8 +136,8 @@ def main():
         sys.exit(0)
 
     # 推送
-    email_ok = email_notifier.send(report, config.recipients)
-    lark_ok = lark_bot.send(report, config.lark_chat_id)
+    email_ok = email_notifier.send(report, config.notify.email.recipients)
+    lark_ok = lark_bot.send(report, config.notify.lark_bot.chat_id)
     logger.info(f"推送结果：邮件={email_ok}, 飞书={lark_ok}")
 
     end_time = datetime.now()
