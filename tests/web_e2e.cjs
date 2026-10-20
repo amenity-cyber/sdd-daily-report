@@ -75,6 +75,14 @@ async function check(name, fn) {
     report = (await (await context.request.get(base + '/api/reports/' + rows.reports[0].id)).json()).report;
     assert.equal(await page.locator('#reportMarkdown').textContent(), report.markdown);
   });
+  await check('activity charts render source mix and a seven-day trend', async () => {
+    await page.locator('#todayDonut svg').waitFor();
+    assert.match(await page.locator('#todayDonut').getAttribute('aria-label'), /3 项活动/);
+    assert.equal(await page.locator('#todayDonut .donut-segment').count(), 3);
+    assert.match(await page.locator('#todayLegend').innerText(), /代码提交[\s\S]*飞书任务[\s\S]*飞书讨论/);
+    assert.equal(await page.locator('#weeklyChart .chart-point').count(), 7);
+    assert.match(await page.locator('#weeklyChart').getAttribute('aria-label'), /3 项活动/);
+  });
   await check('copy writes actual Markdown to clipboard', async () => {
     await page.locator('#modalCopy').click();
     await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('已复制'));

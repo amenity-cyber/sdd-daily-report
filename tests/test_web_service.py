@@ -17,6 +17,32 @@ def test_empty_history(service):
     assert service.list_reports() == []
 
 
+def test_analytics_counts_report_sections_for_today_and_week(service):
+    today = date.today()
+    yesterday = date.fromordinal(today.toordinal() - 1)
+    markdown = """### 📝 一、代码提交
+| 代码提交 | 3 次 |
+- commit one
+- commit two
+### ✅ 二、任务进展
+| 任务更新 | 2 项 |
+- task one
+### 💬 三、协作沟通
+| 协作讨论 | 4 条 |
+- discussion one
+- discussion two
+"""
+    service.storage.save_report(today, "今日团队", markdown, "")
+    service.storage.save_report(today, "另一团队", "| 代码提交 | 1 次 |\n", "")
+    service.storage.save_report(yesterday, "昨日团队", "### 📝 一、代码提交\n- commit\n", "")
+    analytics = service.analytics(today)
+    assert analytics["today"]["counts"] == {"commits": 4, "tasks": 2, "discussions": 4}
+    assert analytics["today"]["total"] == 10
+    assert len(analytics["week"]) == 7
+    assert analytics["week"][-2]["total"] == 1
+    assert analytics["week"][-1]["date"] == today.isoformat()
+
+
 def test_generate_detail_and_persist(service):
     report = service.create_report()
     assert report["status"] == "已完成"
