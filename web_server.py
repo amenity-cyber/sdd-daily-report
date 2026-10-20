@@ -46,6 +46,8 @@ def create_server(host: str, port: int, service: ReportService) -> ThreadingHTTP
                     self.json_response(200, {"status": "ok", "mode": "mock"})
                 elif path == "/api/reports":
                     self.json_response(200, {"reports": service.list_reports()})
+                elif path == "/api/analytics":
+                    self.json_response(200, {"analytics": service.analytics()})
                 elif path.startswith("/api/reports/"):
                     report = service.get_report(path.removeprefix("/api/reports/"))
                     self.json_response(200, {"report": report}) if report else self.json_response(404, {"error": "日报不存在"})
