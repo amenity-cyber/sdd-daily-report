@@ -16,6 +16,11 @@ let toastTimer;
 let detailVersion = 0;
 let listVersion = 0;
 let returnFocus = null;
+const ACTIVITY_TYPES = [
+  { key: 'commits', label: '代码提交', color: 'commit' },
+  { key: 'tasks', label: '飞书任务', color: 'task' },
+  { key: 'discussions', label: '飞书讨论', color: 'discussion' },
+];
 
 function esc(value) {
   return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -104,6 +109,62 @@ function showLoadError(message) {
   $('#loadError').hidden = false;
   $('#loadStatus').hidden = true;
   renderTable();
+}
+
+function renderAnalytics(analytics) {
+  const today = analytics.today;
+  const total = today.total;
+  $('#chartTodayLabel').textContent = today.date;
+  const polar = angle => {
+    const radians = angle * Math.PI / 180;
+    return [72 + 56 * Math.cos(radians), 72 + 56 * Math.sin(radians)];
+  };
+  let angle = -90;
+  const arcs = ACTIVITY_TYPES.map(type => {
+    const value = today.counts[type.key] || 0;
+    const sweep = total ? 360 * value / total : 0;
+    if (sweep <= 0) return '';
+    const start = polar(angle);
+    if (sweep >= 359.99) {
+      const middle = polar(angle + 180);
+      const end = polar(angle + 360);
+      angle += sweep;
+      return `<path class="donut-segment chart-${type.color}" d="M ${start[0]} ${start[1]} A 56 56 0 1 1 ${middle[0]} ${middle[1]} A 56 56 0 1 1 ${end[0]} ${end[1]}" />`;
+    }
+    const end = polar(angle + sweep);
+    const arc = `<path class="donut-segment chart-${type.color}" d="M ${start[0]} ${start[1]} A 56 56 0 ${sweep > 180 ? 1 : 0} 1 ${end[0]} ${end[1]}" />`;
+    angle += sweep;
+    return arc;
+  }).join('');
+  $('#todayDonut').setAttribute('aria-label', `今日共 ${total} 项活动`);
+  $('#todayDonut').innerHTML = `<svg viewBox="0 0 144 144" aria-hidden="true"><circle class="donut-track" cx="72" cy="72" r="56" />${arcs}<text class="donut-total" x="72" y="70">${total}</text><text class="donut-unit" x="72" y="91">项活动</text></svg>`;
+  $('#todayLegend').innerHTML = ACTIVITY_TYPES.map(type => `<li><span class="legend-dot chart-${type.color}"></span><span>${type.label}</span><strong>${today.counts[type.key] || 0}</strong></li>`).join('');
+
+  const points = analytics.week;
+  const max = Math.max(1, ...points.map(point => point.total));
+  const plot = { left: 42, right: 610, top: 28, bottom: 190 };
+  const x = index => plot.left + (plot.right - plot.left) * index / Math.max(1, points.length - 1);
+  const y = value => plot.bottom - (plot.bottom - plot.top) * value / max;
+  const line = points.map((point, index) => `${x(index)},${y(point.total)}`).join(' ');
+  const area = `${plot.left},${plot.bottom} ${line} ${plot.right},${plot.bottom}`;
+  const grid = [0, Math.ceil(max / 2), max].filter((value, index, all) => all.indexOf(value) === index)
+    .map(value => `<g><line class="chart-grid-line" x1="${plot.left}" y1="${y(value)}" x2="${plot.right}" y2="${y(value)}"/><text class="chart-axis-label" x="${plot.left - 12}" y="${y(value) + 4}" text-anchor="end">${value}</text></g>`).join('');
+  const dots = points.map((point, index) => `<circle class="chart-point" cx="${x(index)}" cy="${y(point.total)}" r="4"><title>${point.date}：${point.total} 项活动</title></circle>`).join('');
+  const labels = points.map((point, index) => `<text class="chart-date-label" x="${x(index)}" y="${plot.bottom + 25}" text-anchor="middle">${point.label}</text>`).join('');
+  const weeklyTotal = points.reduce((sum, point) => sum + point.total, 0);
+  $('#weeklyChart').setAttribute('aria-label', `近七天共 ${weeklyTotal} 项活动`);
+  $('#weeklyChart').innerHTML = `<svg viewBox="0 0 640 240" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="activityFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" class="chart-fill-start"/><stop offset="100%" class="chart-fill-end"/></linearGradient></defs>${grid}<polygon class="chart-area" points="${area}"/><polyline class="chart-line" points="${line}"/>${dots}${labels}</svg><p class="chart-footnote">近七天累计 <strong>${weeklyTotal}</strong> 项活动</p>`;
+}
+
+async function loadAnalytics() {
+  try {
+    const { analytics } = await api('/api/analytics');
+    renderAnalytics(analytics);
+  } catch (error) {
+    $('#chartTodayLabel').textContent = '暂时无法加载';
+    $('#todayDonut').setAttribute('aria-label', error.message);
+    $('#weeklyChart').setAttribute('aria-label', error.message);
+  }
 }
 
 async function loadReports() {
@@ -195,6 +256,7 @@ async function createReport() {
     syncNavActive();
     // POST 已持久化；重新读取完整历史，刷新失败由列表错误栏提供重试。
     await loadReports();
+    await loadAnalytics();
     ++detailVersion;
     showDetail(report, $('#createBtn'));
     toast('日报已生成并保存到本机');
@@ -286,4 +348,5 @@ if (location.protocol === 'file:') {
   $('#retryBtn').hidden = true;
 } else {
   loadReports();
+  loadAnalytics();
 }
