@@ -159,11 +159,18 @@ def _rate_limit_wait_seconds(reset_header: str) -> float:
 
 def _to_iso(value: datetime) -> str:
     if value.tzinfo is None:
+        # 假设输入是 UTC 时间，加 Z
         return value.isoformat() + "Z"
     return value.isoformat()
 
 
 def _to_commit_record(summary: dict[str, Any], detail: dict[str, Any], repo: str) -> CommitRecord:
+    COMMIT_MESSAGE_FIX = {
+        "Add files via upload": "上传文件",
+        "Initial commit": "初始化项目",
+        "Update README.md": "更新 README",
+        "Create README.md": "创建 README",
+    }
     commit = summary.get("commit") or {}
     author_login = ""
     if isinstance(summary.get("author"), dict):
@@ -178,9 +185,11 @@ def _to_commit_record(summary: dict[str, Any], detail: dict[str, Any], repo: str
 
     stats = detail.get("stats") or {}
     files = detail.get("files") or []
+    raw_message = str(commit.get("message") or "").split("\n")[0].strip()
+    fixed_message = COMMIT_MESSAGE_FIX.get(raw_message, raw_message)
     return CommitRecord(
         author=author_login,
-        message=str(commit.get("message") or ""),
+        message=fixed_message,
         timestamp=timestamp,
         repo=repo,
         additions=int(stats.get("additions") or 0),

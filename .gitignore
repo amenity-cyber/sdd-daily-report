@@ -19,6 +19,13 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Local credentials
+config.yaml
+.env
+.env.*
+!.env.example
+node_modules/
+
 # 本地 Web 演示数据与端到端测试结果
 data/
 test-results/

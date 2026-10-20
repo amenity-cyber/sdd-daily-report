@@ -91,8 +91,12 @@ def test_empty_member_shows_no_record():
                             commits=[], tasks=[], messages=[])]
     report = generate(members, date(2026, 9, 24), "研发团队")
 
-    assert "今日无记录" in report.markdown
-    assert "今日无记录" in report.html
+    assert "今日无代码提交记录" in report.markdown
+    assert "今日无任务变更记录" in report.markdown
+    assert "今日无协作沟通记录" in report.markdown
+    assert "今日无代码提交记录" in report.html
+    assert "今日无任务变更记录" in report.html
+    assert "今日无协作沟通记录" in report.html
 
 
 # ===== 验收标准 5：数据源失败显示"数据获取失败" =====

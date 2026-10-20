@@ -83,6 +83,8 @@ def collect(
     records: list[MessageRecord] = []
     for item in _extract_items(payload):
         record = _to_message_record(item, chat_name)
+        if not record.content.strip():
+            continue
         if _should_keep(record.content, keywords):
             records.append(record)
     return records
@@ -250,14 +252,37 @@ def _to_message_record(item: dict[str, Any], chat_name: str) -> MessageRecord:
 
 def _normalize_content(content: str) -> str:
     stripped = content.strip()
-    if stripped.startswith("{"):
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError:
-            return content
-        if isinstance(parsed, dict) and parsed.get("text"):
-            return str(parsed["text"])
-    return content
+    if not stripped.startswith("{"):
+        return content
+
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        return content
+
+    if not isinstance(parsed, dict):
+        return content
+
+    # 情况 1：简单文本 {"text": "xxx"}
+    if parsed.get("text"):
+        return str(parsed["text"])
+
+    # 情况 2：任务卡片 {"summary": {"content": [[{"tag": "text", "text": "xxx"}]]}}
+    summary = parsed.get("summary")
+    if isinstance(summary, dict):
+        content_blocks = summary.get("content")
+        if isinstance(content_blocks, list):
+            texts = []
+            for block in content_blocks:
+                if isinstance(block, list):
+                    for item in block:
+                        if isinstance(item, dict) and item.get("text"):
+                            texts.append(str(item["text"]))
+            if texts:
+                return " ".join(texts)
+
+    # 情况 3：其他复杂 JSON，返回空字符串（过滤掉）
+    return ""
 
 
 def _to_unix(value: datetime) -> str:

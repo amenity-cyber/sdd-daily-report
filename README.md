@@ -27,6 +27,7 @@ python -m venv .venv
 ## 接口
 
 - `GET /api/health`：服务运行状态、Mock 模式。
+- `GET /api/analytics`：今日提交、任务、讨论分布及近七个自然日工作强度。
 - `GET /api/reports`：历史日报元数据列表。
 - `POST /api/reports`：空请求体或 `{}`，生成并保存当日日报。
 - `GET /api/reports/<id>`：完整 Markdown/HTML 正文。
@@ -34,6 +35,8 @@ python -m venv .venv
 响应分别使用 `reports`、`report` 字段；错误使用 `error` 字段。页面正文按文本展示，支持复制和下载原 Markdown。
 
 ## 验证
+
+页面统计图从已保存日报的代码提交、任务进展和协作沟通章节汇总，不伪造额外数据。无日报日期显示为 0。
 
 Python 回归与接口测试：
 
@@ -52,6 +55,8 @@ node tests/web_e2e.cjs
 如果没有 Edge，可运行 `npx playwright install chromium` 并不设置 `WEB_TEST_BROWSER`。若 Edge 安装位置不同，请修改该变量。`WEB_TEST_PYTHON` 可指定其他 Python；`PLAYWRIGHT_MODULE` 可指定已安装 Playwright 的绝对目录。Linux/macOS 使用对应 Python 和浏览器路径即可。
 
 脚本创建独立临时数据库、随机端口和无窗口浏览器，检查生成、持久化、复制、下载、错误恢复、筛选、正文安全展示、桌面/窄屏布局、服务重启和直接文件打开。结束后关闭测试服务与浏览器。结果、截图和导出文件位于 `test-results/web-*`，不会修改演示数据库。
+
+GitHub Actions 工作流位于 `.github/workflows/ci.yml`：推送到 `main`、向 `main` 提交 PR 或手动触发时，会在 Python 3.11/3.12 运行测试，并在 Python 3.11 环境运行 Playwright 浏览器验收；浏览器测试证据会作为 Actions artifact 保存。CI 使用模拟数据，不读取本地 `config.yaml`，不连接飞书，也不发送邮件。当前工作流负责持续集成和验收，实际部署需先确定托管平台。
 
 ## SDD / Superpowers 过程材料
 

@@ -45,7 +45,17 @@ def send(report, recipients: list[str]) -> bool:
 
     for attempt in range(1, 4):  # 最多 3 次（首次 + 重试 2 次）
         try:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+            if smtp_port == 465:
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30) as server:
+                    if smtp_user and smtp_password:
+                        server.login(smtp_user, smtp_password)
+                    server.sendmail(smtp_from, recipients, msg.as_string())
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+                    if smtp_user and smtp_password:
+                        server.starttls()
+                        server.login(smtp_user, smtp_password)
+                    server.sendmail(smtp_from, recipients, msg.as_string())
                 if smtp_user and smtp_password:
                     server.starttls()
                     server.login(smtp_user, smtp_password)

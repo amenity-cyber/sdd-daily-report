@@ -92,6 +92,27 @@
         </div>
       </section>
 
+      <!-- Activity charts -->
+      <section class="charts-grid" aria-label="工作活动统计">
+        <article class="chart-card">
+          <div class="chart-head">
+            <div><p class="eyebrow">TODAY · ACTIVITY MIX</p><h2>今日工作分布</h2></div>
+            <span class="chart-caption" id="chartTodayLabel">等待数据</span>
+          </div>
+          <div class="donut-layout">
+            <div id="todayDonut" class="donut-chart" role="img" aria-label="今日活动分布暂无数据"></div>
+            <ul id="todayLegend" class="chart-legend" aria-label="今日活动分类"></ul>
+          </div>
+        </article>
+        <article class="chart-card">
+          <div class="chart-head">
+            <div><p class="eyebrow">LAST 7 DAYS · ACTIVITY</p><h2>近一周工作强度</h2></div>
+            <span class="chart-caption">提交 · 任务 · 讨论</span>
+          </div>
+          <div id="weeklyChart" class="weekly-chart" role="img" aria-label="近一周工作强度暂无数据"></div>
+        </article>
+      </section>
+
       <!-- 任务表格 -->
       <section class="panel" data-od-id="task-table">
         <div class="toolbar">

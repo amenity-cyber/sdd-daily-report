@@ -1,5 +1,6 @@
 """Web 业务层：Mock 采集 → 现有生成器 → SQLite。"""
-from datetime import date
+import re
+from datetime import date, timedelta
 from threading import Lock
 
 from generator.formatter import generate
@@ -30,6 +31,59 @@ class ReportService:
 
     def list_reports(self) -> list[dict]:
         return [self._serialize(report) for report in self.storage.list_reports()]
+
+    @staticmethod
+    def _activity_counts(markdown: str) -> dict[str, int]:
+        """Count activity bullets in the generated report's three source sections."""
+        headings = {
+            "### 📝 一、代码提交": "commits",
+            "### ✅ 二、任务进展": "tasks",
+            "### 💬 三、协作沟通": "discussions",
+        }
+        counts = {key: 0 for key in ("commits", "tasks", "discussions")}
+        summary_names = {
+            "代码提交": "commits",
+            "任务更新": "tasks",
+            "协作讨论": "discussions",
+        }
+        summary_found = set()
+        active = None
+        for line in markdown.splitlines():
+            summary = re.match(r"\|\s*(代码提交|任务更新|协作讨论)\s*\|\s*(\d+)", line)
+            if summary:
+                key = summary_names[summary.group(1)]
+                counts[key] += int(summary.group(2))
+                summary_found.add(key)
+            heading = next((key for text, key in headings.items() if line.strip() == text), None)
+            if heading:
+                active = heading
+            elif line.startswith("## ") or line.startswith("---"):
+                active = None
+            elif active and active not in summary_found and line.startswith("- "):
+                counts[active] += 1
+        return counts
+
+    def analytics(self, today: date | None = None) -> dict:
+        """Summarize saved reports for today's mix and the last seven calendar days."""
+        today = today or date.today()
+        reports_by_date: dict[date, dict[str, int]] = {}
+        for report in self.storage.list_reports():
+            daily_counts = reports_by_date.setdefault(report.report_date, {
+                "commits": 0, "tasks": 0, "discussions": 0,
+            })
+            for category, count in self._activity_counts(report.markdown).items():
+                daily_counts[category] += count
+        week = []
+        for offset in range(6, -1, -1):
+            day = today - timedelta(days=offset)
+            counts = reports_by_date.get(day, {"commits": 0, "tasks": 0, "discussions": 0})
+            week.append({
+                "date": day.isoformat(),
+                "label": day.strftime("%m/%d"),
+                "counts": counts,
+                "total": sum(counts.values()),
+            })
+        return {"today": week[-1], "week": week}
 
     def get_report(self, report_id: str) -> dict | None:
         for report in self.storage.list_reports():

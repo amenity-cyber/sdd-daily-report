@@ -42,6 +42,7 @@ def test_static_and_health(server):
     assert "智能日报生成器" in body
     assert headers["Content-Type"].startswith("text/html")
     assert json.loads(request(server, "/api/health")[2])["mode"] == "mock"
+    assert json.loads(request(server, "/api/analytics")[2])["analytics"]["today"]["total"] == 0
 
 
 def test_generate_list_detail_http_chain(server):
