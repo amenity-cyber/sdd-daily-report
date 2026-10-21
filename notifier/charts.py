@@ -80,8 +80,9 @@ def _rgb(color: str) -> tuple[int, int, int]:
 def render_email_charts(analytics: dict, report_html: str) -> tuple[dict[str, bytes], str]:
     """Return two PNGs and report HTML that references them by Content-ID."""
     today = analytics.get("today", {})
-    week = list(analytics.get("week", []))[-7:]
-    values = [max(0, int(today.get(key, 0) or 0)) for key in ("commits", "tasks", "messages")]
+    week = [_normalize_day(row) for row in list(analytics.get("week", []))[-7:]]
+    today_counts = _normalize_day(today)
+    values = [today_counts[key] for key in ("commits", "tasks", "messages")]
     charts = {"daily-activity": _donut(values), "weekly-intensity": _line_chart(week)}
     section = _html_section(values, week)
     # Put the overview and summary before the charts, so readers see today's
@@ -98,6 +99,17 @@ def render_email_charts(analytics: dict, report_html: str) -> tuple[dict[str, by
         if not count:
             html = section + report_html
     return charts, html
+
+
+def _normalize_day(row: dict) -> dict:
+    """Accept both flat collector analytics and nested web-adapter analytics."""
+    counts = row.get("counts") if isinstance(row.get("counts"), dict) else row
+    return {
+        "date": str(row.get("date", "")),
+        "commits": max(0, int(counts.get("commits", 0) or 0)),
+        "tasks": max(0, int(counts.get("tasks", 0) or 0)),
+        "messages": max(0, int(counts.get("messages", counts.get("discussions", 0)) or 0)),
+    }
 
 
 def _donut(values: list[int]) -> bytes:

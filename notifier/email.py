@@ -32,11 +32,18 @@ def send(report, recipients: list[str], analytics: dict | None = None) -> bool:
         logger.error("收件人列表为空")
         return False
 
-    smtp_host = os.getenv("SMTP_HOST", "localhost")
-    smtp_port = int(os.getenv("SMTP_PORT", "25"))
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    try:
+        smtp_port = int(os.getenv("SMTP_PORT") or "587")
+    except ValueError:
+        logger.error("SMTP_PORT 配置无效")
+        return False
     smtp_user = os.getenv("SMTP_USER", "")
     smtp_password = os.getenv("SMTP_PASSWORD", "")
-    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@company.com")
+    smtp_from = os.getenv("SMTP_FROM") or smtp_user
+    if not smtp_host or not 1 <= smtp_port <= 65535 or not smtp_user or not smtp_password or not smtp_from:
+        logger.error("邮件服务配置不完整；需要有效 SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD")
+        return False
 
     report_name = report.team_name
     subject = f"研一+{report_name}+{report.date}+智能日报"
@@ -69,14 +76,12 @@ def send(report, recipients: list[str], analytics: dict | None = None) -> bool:
         try:
             if smtp_port == 465:
                 with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30) as server:
-                    if smtp_user and smtp_password:
-                        server.login(smtp_user, smtp_password)
+                    server.login(smtp_user, smtp_password)
                     server.sendmail(smtp_from, recipients, msg.as_string())
             else:
                 with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-                    if smtp_user and smtp_password:
-                        server.starttls()
-                        server.login(smtp_user, smtp_password)
+                    server.starttls()
+                    server.login(smtp_user, smtp_password)
                     server.sendmail(smtp_from, recipients, msg.as_string())
             logger.info(f"邮件发送成功: {recipients}")
             return True
