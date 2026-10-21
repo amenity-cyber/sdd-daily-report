@@ -1,6 +1,5 @@
 """主编排入口：按顺序编排 采集 → 聚合 → 生成 → 推送"""
 import argparse
-import os
 import subprocess
 import sys
 from datetime import datetime, timedelta, date
@@ -9,6 +8,7 @@ from pathlib import Path
 from shared.config import load_config, ConfigError
 from shared.logger import get_logger
 from shared.errors import CollectorError, GeneratorError, NotifierError
+from shared.env import load_local_env
 
 from collector import github, lark_task, lark_msg
 from generator.formatter import CommitRecord, MemberReport, generate
@@ -17,26 +17,13 @@ from notifier import lark_bot
 from dataclasses import replace
 def _load_local_env(path: Path = Path(".env")) -> None:
     """Load simple KEY=VALUE entries without requiring a third-party dotenv package."""
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if key.startswith("export "):
-            key = key[7:].strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
-        if key:
-            os.environ.setdefault(key, value)
+    load_local_env(path)
 
 
 _load_local_env()
 
 logger = get_logger(__name__)
+last_collection_status = {}
 
 
 def _local_git_commits(repos: list[str], since: datetime, until: datetime, members) -> list[CommitRecord] | None:
@@ -128,6 +115,8 @@ def collect_all(config, since: datetime, until: datetime) -> dict:
     单个数据源失败不影响其他数据源。
     返回: {member_name: MemberReport}
     """
+    global last_collection_status
+    status = {"github": False, "local_git": False, "feishu_tasks": False, "feishu_discussions": False}
     # 初始化每个成员的空报告
     reports = {}
     for m in config.members:
@@ -147,6 +136,9 @@ def collect_all(config, since: datetime, until: datetime) -> dict:
             if fallback is not None:
                 logger.warning("GitHub API 不可用，使用匹配仓库的本地 Git 历史补充提交数据")
                 commits = fallback
+                status["local_git"] = True
+        else:
+            status["github"] = True
         logger.info(f"GitHub 采集到 {len(commits)} 条 commit")
         for m in config.members:
             reports[m.name].commits = [c for c in commits if c.author == m.github]
@@ -156,15 +148,18 @@ def collect_all(config, since: datetime, until: datetime) -> dict:
     # 2. 飞书任务采集
     try:
         tasks = lark_task.collect(config.lark.project_id, since, until)
+        status["feishu_tasks"] = not getattr(lark_task, "last_collection_failed", False)
         logger.info(f"飞书任务采集到 {len(tasks)} 条")
         if config.members:
             reports[config.members[0].name].tasks = tasks
     except Exception as e:
+        status["feishu_tasks"] = False
         logger.error(f"飞书任务采集失败: {e}")
 
     # 3. 飞书消息采集
     try:
         messages = lark_msg.collect(config.lark.chat_id, config.lark.keywords, since, until)
+        status["feishu_discussions"] = not getattr(lark_msg, "last_collection_failed", False)
         logger.info(f"飞书消息采集到 {len(messages)} 条")
         for m in config.members:
             seen_contents = set()
@@ -190,8 +185,10 @@ def collect_all(config, since: datetime, until: datetime) -> dict:
                 filtered.append(msg)
             reports[m.name].messages = filtered
     except Exception as e:
+        status["feishu_discussions"] = False
         logger.error(f"飞书消息采集失败: {e}")
 
+    last_collection_status = status
     # 检查是否所有数据源都失败
     all_failed = all(
         r.commits is None and r.tasks is None and r.messages is None
@@ -301,6 +298,9 @@ def main():
     email_ok = email_notifier.send(report, config.notify.email.recipients, analytics=analytics)
     lark_ok = False if args.email_only else lark_bot.send(report, config.notify.lark_bot.chat_id)
     logger.info(f"推送结果：邮件={email_ok}, 飞书={lark_ok}")
+    if args.email_only and not email_ok:
+        logger.error("--email-only 模式下邮件发送失败")
+        sys.exit(1)
 
     end_time = datetime.now()
     logger.info(f"=== 日报生成结束：{end_time}，耗时 {end_time - start_time} ===")
