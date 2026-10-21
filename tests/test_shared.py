@@ -63,6 +63,14 @@ class TestConfig:
         assert config.notify.email.recipients == ["leader@company.com"]
         assert get_config() is config
 
+    def test_load_config_from_deployment_environment(self, monkeypatch, tmp_path: Path):
+        monkeypatch.setenv("APP_CONFIG_YAML", yaml.safe_dump(_valid_config(), allow_unicode=True))
+
+        config = load_config(tmp_path / "config-does-not-exist.yaml")
+
+        assert config.team_name == "研发团队"
+        assert config.github.repos == ["org/repo-a"]
+
     def test_missing_required_field_raises_clear_error(self, tmp_path: Path):
         data = _valid_config()
         del data["team_name"]

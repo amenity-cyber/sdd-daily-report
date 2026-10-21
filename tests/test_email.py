@@ -12,8 +12,8 @@ from notifier.email import send
 def use_local_test_smtp(monkeypatch):
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_PORT", "587")
-    monkeypatch.delenv("SMTP_USER", raising=False)
-    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    monkeypatch.setenv("SMTP_USER", "sender@example.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "test-password")
     monkeypatch.setenv("SMTP_FROM", "sender@example.com")
 
 
@@ -135,3 +135,37 @@ def test_charts_are_embedded_below_personal_title(monkeypatch):
         assert "10/14" in html and "10/15" in html
         assert len(images) == 2
         assert {part["Content-ID"] for part in images} == {"<daily-activity>", "<weekly-intensity>"}
+
+
+def test_charts_support_nested_web_analytics_shape():
+    from notifier.charts import render_email_charts
+
+    analytics = {
+        "today": {
+            "date": "2026-10-21",
+            "counts": {"commits": 6, "tasks": 0, "discussions": 1},
+            "total": 7,
+        },
+        "week": [
+            {
+                "date": f"2026-10-{day}",
+                "counts": {
+                    "commits": 6 if day == "21" else 0,
+                    "tasks": 0,
+                    "discussions": 1 if day == "21" else 0,
+                },
+                "total": 7 if day == "21" else 0,
+            }
+            for day in ("15", "16", "17", "18", "19", "20", "21")
+        ],
+    }
+    charts, html = render_email_charts(analytics, "<html><body><h1>日报</h1></body></html>")
+    zero_charts, _ = render_email_charts(
+        {"today": {"counts": {}}, "week": [{"date": row["date"], "counts": {}} for row in analytics["week"]]},
+        "<html><body><h1>日报</h1></body></html>",
+    )
+
+    assert "代码提交：6" in html
+    assert "任务更新：0" in html
+    assert "飞书讨论：1" in html
+    assert charts["weekly-intensity"] != zero_charts["weekly-intensity"]

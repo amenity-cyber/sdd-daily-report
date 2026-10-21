@@ -118,6 +118,24 @@ def test_check_mode_failure():
         assert exc_info.value.code == 1
 
 
+def test_email_only_failure_returns_nonzero_for_ci():
+    config = SimpleNamespace(
+        team_name="闫宣妤", notify=SimpleNamespace(email=SimpleNamespace(recipients=["test@example.com"])),
+    )
+    report = SimpleNamespace(date=date.today(), team_name="闫宣妤", members=[])
+    with patch.object(sys, "argv", ["main.py", "--email-only"]), \
+         patch("main.load_config", return_value=config), \
+         patch("main.collect_all", return_value={}), \
+         patch("main.generate", return_value=report), \
+         patch("main.collect_activity_analytics", return_value={"today": {}, "week": []}), \
+         patch("main.email_notifier.send", return_value=False), \
+         patch("main.lark_bot.send") as lark_send:
+        with pytest.raises(SystemExit) as exc_info:
+            main_module.main()
+    assert exc_info.value.code == 1
+    lark_send.assert_not_called()
+
+
 def test_local_git_fallback_parses_commit_and_diff_stats(monkeypatch):
     member = SimpleNamespace(name="Ada", github="ada")
     responses = [
