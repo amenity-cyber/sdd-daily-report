@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -134,8 +135,16 @@ def _parse_notify(raw: Any) -> NotifyConfig:
 def load_config(path: str | Path = "config.yaml") -> AppConfig:
     """读取 YAML 配置，校验必填字段，并缓存为全局配置。"""
     global _config
-    config_path = Path(path)
-    data = _load_yaml(config_path)
+    config_text = os.environ.get("APP_CONFIG_YAML")
+    if config_text:
+        try:
+            data = yaml.safe_load(config_text)
+        except yaml.YAMLError as exc:
+            raise ConfigError("环境变量 APP_CONFIG_YAML 解析失败") from exc
+        if not isinstance(data, dict):
+            raise ConfigError("环境变量 APP_CONFIG_YAML 格式不正确，应为 YAML 映射")
+    else:
+        data = _load_yaml(Path(path))
 
     for key in _REQUIRED_TOP_LEVEL:
         _require(data, key, key)

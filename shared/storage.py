@@ -52,6 +52,43 @@ class ReportStorage:
                 ON daily_reports (report_date, team_name)
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS email_deliveries (
+                    report_id INTEGER PRIMARY KEY,
+                    sent_at TEXT NOT NULL,
+                    FOREIGN KEY(report_id) REFERENCES daily_reports(id)
+                )
+                """
+            )
+            conn.commit()
+
+    def email_sent(self, report_id: int) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT delivery.sent_at, report.generated_at
+                FROM email_deliveries AS delivery
+                JOIN daily_reports AS report ON report.id = delivery.report_id
+                WHERE delivery.report_id = ?
+                """,
+                (report_id,),
+            ).fetchone()
+        if row is None:
+            return False
+        sent_at = datetime.fromisoformat(row["sent_at"]).timestamp()
+        generated_at = datetime.fromisoformat(row["generated_at"]).timestamp()
+        return sent_at >= generated_at
+
+    def mark_email_sent(self, report_id: int, sent_at: datetime | None = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO email_deliveries (report_id, sent_at) VALUES (?, ?)
+                ON CONFLICT(report_id) DO UPDATE SET sent_at = excluded.sent_at
+                """,
+                (report_id, (sent_at or datetime.now()).isoformat()),
+            )
             conn.commit()
 
     def save_report(
