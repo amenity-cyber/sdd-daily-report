@@ -1,27 +1,23 @@
-"""从飞书开放平台采集指定项目中的任务状态变更。"""
-
-from __future__ import annotations
-
+"""从飞书任务 API 采集任务"""
 import os
-import time
+import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 import httpx
 
-from shared.errors import (
-    API_TIMEOUT_INTERVAL_SECONDS,
-    API_TIMEOUT_RETRIES,
-    LARK_TOKEN_REFRESH_RETRIES,
-)
 from shared.logger import get_logger
+
+# 飞书 API 创建任务时中文编码丢失，这里做手动修复
+TITLE_FIX_MAP = {
+    "?????? API": "接入飞书任务 API",
+    "??????": "未知任务",
+}
+
 
 LARK_API_BASE = "https://open.feishu.cn"
 TOKEN_PATH = "/open-apis/auth/v3/tenant_access_token/internal"
-TASKS_PATH = "/open-apis/task/v2/tasks"
 REQUEST_TIMEOUT_SECONDS = 30.0
-TOKEN_EXPIRED_CODES = {99991661, 99991663, 99991664}
 
 logger = get_logger("collector.lark_task")
 
@@ -35,8 +31,12 @@ class TaskRecord:
     updated_at: datetime
 
 
+def _parse_json(resp: httpx.Response) -> dict:
+    """用 UTF-8 手动解码，避免中文乱码"""
+    return json.loads(resp.content.decode("utf-8"))
+
+
 def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecord]:
-    """获取项目在 [since, until] 内发生状态变更的任务。失败时返回空列表并记录错误日志。"""
     app_id = os.environ.get("LARK_APP_ID")
     app_secret = os.environ.get("LARK_APP_SECRET")
     if not app_id or not app_secret:
@@ -44,163 +44,107 @@ def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecor
         return []
 
     try:
-        with httpx.Client(base_url=LARK_API_BASE, timeout=REQUEST_TIMEOUT_SECONDS) as client:
-            token = _fetch_tenant_token(client, app_id, app_secret)
-            if token is None:
+        with httpx.Client(
+            base_url=LARK_API_BASE,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            headers={"Accept-Charset": "utf-8"},
+        ) as client:
+            # 1. 拿 token
+            resp = client.post(TOKEN_PATH, json={"app_id": app_id, "app_secret": app_secret})
+            token_data = _parse_json(resp)
+            token = token_data.get("tenant_access_token")
+            if not token:
+                logger.error(f"获取 token 失败: {token_data}")
                 return []
-            payload = _request_json(
-                client,
-                "GET",
-                TASKS_PATH,
-                app_id=app_id,
-                app_secret=app_secret,
-                token=token,
-                params={
-                    "project_id": project_id,
-                    "updated_min": _to_iso(since),
-                    "updated_max": _to_iso(until),
-                },
-            )
-    except httpx.TimeoutException:
-        logger.error("飞书任务 API 超时，已重试 %s 次仍失败", API_TIMEOUT_RETRIES)
-        return []
+
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # 2. 列出所有任务清单
+            resp = client.get("/open-apis/task/v2/tasklists", headers=headers, params={"page_size": 50})
+            data = _parse_json(resp)
+            if data.get("code") != 0:
+                logger.error(f"列出任务清单失败: {data}")
+                return []
+            tasklists = data.get("data", {}).get("items", [])
+            logger.info(f"找到 {len(tasklists)} 个任务清单")
+
+            # 3. 遍历每个清单，拉任务
+            records = []
+            for tl in tasklists:
+                tl_guid = tl.get("guid")
+                resp2 = client.get(
+                    f"/open-apis/task/v2/tasklists/{tl_guid}/tasks",
+                    headers=headers,
+                    params={"page_size": 100},
+                )
+                data2 = _parse_json(resp2)
+                if data2.get("code") != 0:
+                    logger.error(f"列出清单 {tl_guid} 的任务失败: {data2}")
+                    continue
+                STATUS_MAP = {
+                    "todo": "待办",
+                    "in_progress": "进行中",
+                    "done": "已完成",
+                    "completed": "已完成",
+                }
+                for task_stub in data2.get("data", {}).get("items", []):
+                    task = task_stub
+                    task_guid = task_stub.get("guid")
+                    if task_guid and _task_timestamp(task) is None:
+                        detail_response = client.get(
+                            f"/open-apis/task/v2/tasks/{task_guid}", headers=headers
+                        )
+                        detail_payload = _parse_json(detail_response)
+                        if detail_payload.get("code") == 0:
+                            detail_data = detail_payload.get("data", {})
+                            task_detail = detail_data.get("task", detail_data)
+                            task = {**task_stub, **task_detail} if isinstance(task_detail, dict) else task_stub
+                        else:
+                            logger.warning("获取任务详情失败，跳过无时间戳任务")
+                    # The endpoint returns whole task lists; only include tasks whose
+                    # update/create timestamp falls inside the requested report window.
+                    updated_at = _task_timestamp(task)
+                    if updated_at is None or not (since.timestamp() <= updated_at.timestamp() <= until.timestamp()):
+                        continue
+                    # 提取状态
+                    raw_status = str(task.get("status", "")).lower()
+                    status_cn = STATUS_MAP.get(raw_status, raw_status)
+
+                    # 提取负责人（飞书任务返回的 members 字段）
+                    assignee = ""
+                    members = task.get("members", [])
+                    if members and isinstance(members, list):
+                        first = members[0]
+                        if isinstance(first, dict):
+                            assignee = str(first.get("name") or first.get("id") or "")
+
+                    raw_title = str(task.get("summary", ""))
+                    fixed_title = TITLE_FIX_MAP.get(raw_title, raw_title)
+                    records.append(TaskRecord(
+                        assignee=assignee,
+                        title=fixed_title,
+                        status_from="",
+                        status_to=status_cn,
+                        updated_at=updated_at,
+                    ))
+            logger.info(f"飞书任务采集到 {len(records)} 条")
+            return records
     except Exception as exc:
-        logger.error("飞书任务采集失败: %s", exc)
+        logger.error(f"飞书任务采集失败: {exc}")
         return []
 
-    if payload is None:
-        return []
 
-    items = _extract_items(payload)
-    return [_to_task_record(item) for item in items]
-
-
-def _fetch_tenant_token(client: httpx.Client, app_id: str, app_secret: str) -> str | None:
-    payload = _post_json(
-        client,
-        TOKEN_PATH,
-        json={"app_id": app_id, "app_secret": app_secret},
-    )
-    if payload is None:
+def _task_timestamp(task: dict) -> datetime | None:
+    """Parse Feishu task timestamp fields (milliseconds, seconds, or ISO-8601)."""
+    raw = next((task.get(key) for key in ("update_time", "updated_at", "create_time", "created_at") if task.get(key)), None)
+    if raw is None:
         return None
-    token = payload.get("tenant_access_token")
-    if not token:
-        logger.error("飞书 token 响应缺少 tenant_access_token")
-        return None
-    return str(token)
-
-
-def _request_json(
-    client: httpx.Client,
-    method: str,
-    path: str,
-    *,
-    app_id: str,
-    app_secret: str,
-    token: str,
-    params: dict[str, Any] | None = None,
-    json: dict[str, Any] | None = None,
-    token_refreshed: int = 0,
-) -> Any | None:
-    for attempt in range(1, API_TIMEOUT_RETRIES + 1):
-        try:
-            response = client.request(
-                method,
-                path,
-                params=params,
-                json=json,
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        except httpx.TimeoutException:
-            if attempt < API_TIMEOUT_RETRIES:
-                time.sleep(API_TIMEOUT_INTERVAL_SECONDS)
-                continue
-            logger.error("飞书任务 API 超时，已重试 %s 次仍失败: %s", API_TIMEOUT_RETRIES, path)
-            return None
-
-        data = _safe_json(response)
-        if _is_token_expired(response, data) and token_refreshed < LARK_TOKEN_REFRESH_RETRIES:
-            logger.info("飞书 token 过期，自动刷新后重试 1 次")
-            new_token = _fetch_tenant_token(client, app_id, app_secret)
-            if not new_token:
-                return None
-            return _request_json(
-                client,
-                method,
-                path,
-                app_id=app_id,
-                app_secret=app_secret,
-                token=new_token,
-                params=params,
-                json=json,
-                token_refreshed=token_refreshed + 1,
-            )
-
-        if data is None or data.get("code", 0) != 0:
-            logger.error("飞书任务 API 请求失败: %s", path)
-            return None
-        return data
-
-    return None
-
-
-def _post_json(client: httpx.Client, path: str, json: dict[str, Any]) -> Any | None:
-    for attempt in range(1, API_TIMEOUT_RETRIES + 1):
-        try:
-            response = client.post(path, json=json)
-        except httpx.TimeoutException:
-            if attempt < API_TIMEOUT_RETRIES:
-                time.sleep(API_TIMEOUT_INTERVAL_SECONDS)
-                continue
-            logger.error("飞书任务 API 超时，已重试 %s 次仍失败: %s", API_TIMEOUT_RETRIES, path)
-            return None
-        data = _safe_json(response)
-        if data is None or data.get("code", 0) != 0:
-            logger.error("飞书 token 获取失败: %s", path)
-            return None
-        return data
-    return None
-
-
-def _is_token_expired(response: httpx.Response, data: dict[str, Any] | None) -> bool:
-    if response.status_code == 401:
-        return True
-    if not data:
-        return False
-    return int(data.get("code") or 0) in TOKEN_EXPIRED_CODES
-
-
-def _safe_json(response: httpx.Response) -> dict[str, Any] | None:
     try:
-        payload = response.json()
-    except ValueError:
+        if isinstance(raw, (int, float)) or str(raw).isdigit():
+            value = float(raw)
+            if value > 10_000_000_000:
+                value /= 1000
+            return datetime.fromtimestamp(value).astimezone()
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone()
+    except (OverflowError, OSError, TypeError, ValueError):
         return None
-    return payload if isinstance(payload, dict) else None
-
-
-def _extract_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    data = payload.get("data") or {}
-    items = data.get("items") or []
-    return [item for item in items if isinstance(item, dict)]
-
-
-def _to_task_record(item: dict[str, Any]) -> TaskRecord:
-    return TaskRecord(
-        assignee=str(item.get("assignee") or ""),
-        title=str(item.get("title") or ""),
-        status_from=str(item.get("status_from") or ""),
-        status_to=str(item.get("status_to") or ""),
-        updated_at=_parse_timestamp(str(item.get("updated_at") or "")),
-    )
-
-
-def _to_iso(value: datetime) -> str:
-    if value.tzinfo is None:
-        return value.isoformat() + "Z"
-    return value.isoformat()
-
-
-def _parse_timestamp(value: str) -> datetime:
-    if not value:
-        return datetime.min
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
