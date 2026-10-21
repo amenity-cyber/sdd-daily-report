@@ -8,6 +8,15 @@ from generator.formatter import DailyReport, MemberReport
 from notifier.email import send
 
 
+@pytest.fixture(autouse=True)
+def use_local_test_smtp(monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.delenv("SMTP_USER", raising=False)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    monkeypatch.setenv("SMTP_FROM", "sender@example.com")
+
+
 def make_report():
     return DailyReport(
         date=date(2026, 9, 24),
@@ -16,7 +25,9 @@ def make_report():
                               commits=[], tasks=[], messages=[])],
         generated_at=datetime(2026, 9, 24, 18, 0, 0),
         markdown="# 日报",
-        html="<html><body>日报</body></html>",
+        html=("<html><body><h1>研发团队 工作日报</h1>"
+              "<div class=\"summary-box\">今日总结</div>"
+              "<h3>详细内容</h3><p>日报</p></body></html>"),
     )
 
 
@@ -51,8 +62,7 @@ def test_email_subject_contains_date_and_team():
             part.decode(enc or "utf-8") if isinstance(part, bytes) else part
             for part, enc in decoded_parts
         )
-        assert "研发团队" in subject
-        assert "2026-09-24" in subject
+        assert subject == "研一+研发团队+2026-09-24+智能日报"
 
 
 # ===== 验收标准 3：邮件正文为 HTML =====
@@ -93,3 +103,35 @@ def test_retry_on_failure():
 def test_empty_recipients_returns_false():
     result = send(make_report(), [])
     assert result is False
+
+
+def test_charts_are_embedded_below_personal_title(monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_USER", "sender@example.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "test-password")
+    analytics = {
+        "today": {"commits": 2, "tasks": 1, "messages": 3},
+        "week": [
+            {"date": "2026-10-14", "commits": 1, "tasks": 0, "messages": 2},
+            {"date": "2026-10-15", "commits": 2, "tasks": 1, "messages": 3},
+        ],
+    }
+    with patch("smtplib.SMTP") as mock_smtp:
+        server = mock_smtp.return_value.__enter__.return_value
+        assert send(make_report(), ["leader@example.com"], analytics=analytics) is True
+        assert server.sendmail.call_count == 1
+        assert server.starttls.call_count == 1
+
+        import email
+        message = email.message_from_string(server.sendmail.call_args.args[2])
+        parts = list(message.walk())
+        html = next(part.get_payload(decode=True).decode("utf-8") for part in parts if part.get_content_type() == "text/html")
+        images = [part for part in parts if part.get_content_type() == "image/png"]
+        assert "<h1>研发团队 今日日报</h1>" in html
+        assert html.index("今日总结") < html.index("📈 工作数据图表") < html.index("<h3>详细内容</h3>")
+        assert 'src="cid:daily-activity"' in html
+        assert 'src="cid:weekly-intensity"' in html
+        assert "10/14" in html and "10/15" in html
+        assert len(images) == 2
+        assert {part["Content-ID"] for part in images} == {"<daily-activity>", "<weekly-intensity>"}

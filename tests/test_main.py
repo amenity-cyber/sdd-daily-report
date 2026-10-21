@@ -1,6 +1,7 @@
 """Task 9 验收测试：主编排入口"""
 import sys
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -115,3 +116,59 @@ def test_check_mode_failure():
         with pytest.raises(SystemExit) as exc_info:
             main_module.main()
         assert exc_info.value.code == 1
+
+
+def test_local_git_fallback_parses_commit_and_diff_stats(monkeypatch):
+    member = SimpleNamespace(name="Ada", github="ada")
+    responses = [
+        SimpleNamespace(returncode=0, stdout="https://github.com/example/reports.git\n"),
+        SimpleNamespace(returncode=0, stdout="sha1\x1f2026-10-20T10:00:00+08:00\x1fAda\x1ffeat: report charts\n"),
+        SimpleNamespace(returncode=0, stdout="12\t3\tmain.py\n-\t-\tchart.png\n"),
+    ]
+    monkeypatch.setattr(main_module.subprocess, "run", lambda *args, **kwargs: responses.pop(0))
+
+    commits = main_module._local_git_commits(
+        ["example/reports"], datetime(2026, 10, 20), datetime(2026, 10, 21), [member]
+    )
+
+    assert len(commits) == 1
+    assert commits[0].author == "ada"
+    assert commits[0].message == "feat: report charts"
+    assert commits[0].additions == 12
+    assert commits[0].deletions == 3
+    assert commits[0].files_changed == 2
+
+
+def test_activity_analytics_covers_seven_days_ending_today():
+    from generator.formatter import CommitRecord, MemberReport, MessageRecord, TaskRecord
+
+    tz = timezone(timedelta(hours=8))
+    today = datetime(2026, 10, 20, 23, 0, tzinfo=tz)
+    since = today.replace(hour=0, minute=0)
+    member = SimpleNamespace(name="闫宣妤", github="yanxuanyu", lark="yanxuanyu")
+    config = SimpleNamespace(
+        github=SimpleNamespace(repos=["amenity-cyber/sdd-daily-report"]),
+        lark=SimpleNamespace(project_id="project", chat_id="chat", keywords=[]),
+        members=[member],
+    )
+    commits = [
+        CommitRecord("yanxuanyu", "start week", datetime(2026, 10, 14, 10, tzinfo=tz), "repo", 1, 0, 1),
+        CommitRecord("yanxuanyu", "today", datetime(2026, 10, 20, 10, tzinfo=tz), "repo", 1, 0, 1),
+        CommitRecord("yanxuanyu", "future", datetime(2026, 10, 21, 10, tzinfo=tz), "repo", 1, 0, 1),
+    ]
+    tasks = [TaskRecord("yanxuanyu", "today task", "open", "done", datetime(2026, 10, 20, 11, tzinfo=tz))]
+    messages = [MessageRecord("yanxuanyu", "today discussion", datetime(2026, 10, 20, 12, tzinfo=tz), "chat")]
+    report = MemberReport("闫宣妤", "yanxuanyu", commits=[commits[1]], tasks=tasks, messages=messages)
+
+    with patch("main.github.collect", return_value=commits) as github_collect, \
+         patch("main.lark_task.collect", return_value=tasks) as task_collect, \
+         patch("main.lark_msg.collect", return_value=messages):
+        analytics = main_module.collect_activity_analytics(config, {"闫宣妤": report}, since, today)
+
+    assert github_collect.call_args.args[1] == datetime(2026, 10, 14, 0, 0, tzinfo=tz)
+    assert task_collect.call_args.args[1] == datetime(2026, 10, 14, 0, 0, tzinfo=tz)
+    assert [row["date"] for row in analytics["week"]] == [
+        (date(2026, 10, 14) + timedelta(days=offset)).isoformat() for offset in range(7)
+    ]
+    assert [row["commits"] for row in analytics["week"]] == [1, 0, 0, 0, 0, 0, 1]
+    assert analytics["today"] == {"commits": 1, "tasks": 1, "messages": 1}
