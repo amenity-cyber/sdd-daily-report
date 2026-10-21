@@ -85,7 +85,7 @@ def generate(members: list[MemberReport], date: date, team_name: str) -> DailyRe
             date=date,
             team_name=team_name,
             members=members,
-            generated_at=datetime.now(),
+            generated_at=datetime.now().replace(microsecond=0),
         )
         report.markdown = render_markdown(report)
         report.html = render_html(report)
