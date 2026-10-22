@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: sdd-daily-report
+    runtime: python
+    plan: starter
+    region: singapore
+    branch: main
+    buildCommand: python -m pip install .
+    startCommand: python web_server.py --host 0.0.0.0 --port $PORT --db /var/data/web_reports.db
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    disk:
+      name: daily-report-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: APP_ENV
+        value: production
+      - key: APP_CONFIG_YAML
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: LARK_APP_ID
+        sync: false
+      - key: LARK_APP_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: WEB_AUTH_USER
+        sync: false
+      - key: WEB_AUTH_PASSWORD
+        sync: false
