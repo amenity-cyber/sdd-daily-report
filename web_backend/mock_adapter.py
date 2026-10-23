@@ -1,7 +1,7 @@
 """使用业务模型提供离线样例，不连接外部 API。"""
 from datetime import date, datetime, time
 
-from generator.formatter import CommitRecord, MemberReport, MessageRecord, TaskRecord
+from generator.formatter import CommitRecord, MemberReport, TaskRecord
 
 
 class MockExternalAdapter:
@@ -17,9 +17,5 @@ class MockExternalAdapter:
             tasks=[TaskRecord(
                 assignee="demo-developer", title="验证日报生成、复制与导出",
                 status_from="进行中", status_to="已完成", updated_at=timestamp,
-            )],
-            messages=[MessageRecord(
-                sender="演示成员", content="本地 Mock 联调完成，等待验收。",
-                timestamp=timestamp, chat_name="演示研发群",
             )],
         )]

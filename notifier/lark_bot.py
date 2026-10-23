@@ -18,7 +18,10 @@ def _get_tenant_access_token() -> str | None:
         logger.error("缺少环境变量 LARK_APP_ID 或 LARK_APP_SECRET")
         return None
     try:
-        with httpx.Client(timeout=10) as client:
+        client_options = {"timeout": 10, "trust_env": False}
+        if os.environ.get("APP_HTTP_PROXY"):
+            client_options["proxy"] = os.environ["APP_HTTP_PROXY"]
+        with httpx.Client(**client_options) as client:
             resp = client.post(
                 f"{LARK_API_BASE}/auth/v3/tenant_access_token/internal",
                 json={"app_id": app_id, "app_secret": app_secret},
@@ -57,7 +60,10 @@ def send(report, chat_id: str) -> bool:
 
     for attempt in range(1, 4):
         try:
-            with httpx.Client(timeout=30) as client:
+            client_options = {"timeout": 30, "trust_env": False}
+            if os.environ.get("APP_HTTP_PROXY"):
+                client_options["proxy"] = os.environ["APP_HTTP_PROXY"]
+            with httpx.Client(**client_options) as client:
                 resp = client.post(
                     f"{LARK_API_BASE}/im/v1/messages",
                     params={"receive_id_type": "chat_id"},

@@ -33,21 +33,12 @@ class TaskRecord:
 
 
 @dataclass
-class MessageRecord:
-    sender: str
-    content: str
-    timestamp: datetime
-    chat_name: str
-
-
-@dataclass
 class MemberReport:
     name: str
     github_username: str
     # None 表示该数据源采集失败；[] 表示无记录
     commits: Optional[list[CommitRecord]] = None
     tasks: Optional[list[TaskRecord]] = None
-    messages: Optional[list[MessageRecord]] = None
 
 
 @dataclass
@@ -67,7 +58,7 @@ def generate(members: list[MemberReport], date: date, team_name: str) -> DailyRe
     生成日报。
 
     Args:
-        members: 各成员的采集数据（commits/tasks/messages 为 None 表示该源失败）
+        members: 各成员的采集数据（commits/tasks 为 None 表示该源失败）
         date: 日报日期
         team_name: 团队名称
 
@@ -85,7 +76,7 @@ def generate(members: list[MemberReport], date: date, team_name: str) -> DailyRe
             date=date,
             team_name=team_name,
             members=members,
-            generated_at=datetime.now(),
+            generated_at=datetime.now().replace(microsecond=0),
         )
         report.markdown = render_markdown(report)
         report.html = render_html(report)

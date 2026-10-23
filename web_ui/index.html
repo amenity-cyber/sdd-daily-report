@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- OpenDesign 管理面板：由本地服务提供页面，数据来自 Mock 联调 API。 -->
+<!-- OpenDesign 管理面板：由本地服务提供页面，数据来自当前联调 API。 -->
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
@@ -19,8 +19,7 @@
         <span class="pill">SDD · v0.2</span>
       </div>
       <div class="topbar-actions">
-        <!-- 明确标记模拟数据范围 -->
-        <span class="pill pill--warn">模拟数据 · 本地联调</span>
+        <span class="pill pill--warn" id="modeBadge">正在连接服务…</span>
         <button class="btn btn-ghost btn-sm" type="button" id="aboutBtn">关于</button>
       </div>
     </div>
@@ -39,8 +38,8 @@
         <button class="nav-item" type="button" data-filter="已完成">已完成 <span class="count" data-count="已完成">0</span></button>
       </nav>
       <div class="sidebar-foot">
-        <p class="nav-label">演示说明</p>
-        <p class="meta">日报使用模拟工作记录生成，保存到本机。演示不发送邮件或飞书通知。</p>
+        <p class="nav-label">数据来源</p>
+        <p class="meta" id="sourceDescription">正在检查本地服务配置…</p>
 
       </div>
     </aside>
@@ -53,7 +52,7 @@
         <div>
           <p class="eyebrow">Daily Report · 管理面板</p>
           <h1>日报任务</h1>
-          <p class="lead">从模拟工作记录生成完整日报，保存在本机，随时查看、复制或导出。同一天再次生成会更新当日日报。</p>
+          <p class="lead" id="pageLead">从已配置的数据源生成完整日报，保存在本机，随时查看、复制或导出。同一天再次生成会更新当日日报。</p>
         </div>
         <!-- 本页唯一的主操作按钮 -->
         <button class="btn btn-primary" type="button" id="createBtn" disabled>
@@ -107,11 +106,12 @@
         <article class="chart-card">
           <div class="chart-head">
             <div><p class="eyebrow">LAST 7 DAYS · ACTIVITY</p><h2>近一周工作强度</h2></div>
-            <span class="chart-caption">提交 · 任务 · 讨论</span>
+            <span class="chart-caption">提交 · 任务</span>
           </div>
           <div id="weeklyChart" class="weekly-chart" role="img" aria-label="近一周工作强度暂无数据"></div>
         </article>
       </section>
+      <p class="load-error" id="sourceWarning" role="status" hidden></p>
 
       <!-- 任务表格 -->
       <section class="panel" data-od-id="task-table">
@@ -165,6 +165,7 @@
     <div class="modal-foot">
       <button class="btn btn-ghost" type="button" id="modalCopy">复制正文</button>
       <button class="btn btn-secondary" type="button" id="modalExport">导出 Markdown</button>
+      <button class="btn btn-primary" type="button" id="modalEmail" hidden>发送邮件</button>
     </div>
   </div>
 </div>

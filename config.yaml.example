@@ -7,13 +7,10 @@ team_name: "研发团队"
 members:
   - name: "张三"
     github: "zhangsan"
-    lark: "zhangsan@company.com"
   - name: "李四"
     github: "lisi-dev"
-    lark: "lisi@company.com"
   - name: "王五"
     github: "wangwu"
-    lark: "wangwu@company.com"
 
 # GitHub 采集
 github:
@@ -24,11 +21,6 @@ github:
 # 飞书采集
 lark:
   project_id: "your-project-id"
-  chat_id: "your-chat-id"
-  keywords:
-    - "进度"
-    - "阻塞"
-    - "完成"
 
 # 推送
 notify:

@@ -2,6 +2,8 @@
 
 ## 1. 系统架构
 
+> 当前实现范围修订（2026-10-23）：飞书群消息采集器和消息数据模型已移除。实际日报只统计 GitHub 提交与飞书任务；飞书机器人仍可发送日报，但不会读取群聊记录。
+
 ### 1.1 架构模式
 
 采用**管道式架构**（Pipeline Architecture）：数据从外部数据源流入，经过采集、生成、推送三个阶段，最终到达目标用户。
@@ -22,7 +24,7 @@ GitHub API ─┐
             │
 飞书任务 API ┼→ [采集层] → 原始数据(JSON) → [生成层] → DailyReport
             │  Collector                    Generator     │
-飞书消息 API ┘                                            │
+                                                          │
                                                           ↓
                                                     [推送层] Notifier
                                                       │        │
@@ -41,7 +43,6 @@ GitHub API ─┐
 |------|------|--------|
 | github.py | 从 GitHub API 获取 commit 记录 | 数据格式化、去重判断 |
 | lark_task.py | 从飞书开放平台获取任务状态变更 | 推送通知 |
-| lark_msg.py | 从飞书群获取消息记录并按关键词过滤 | 语义理解/AI 摘要 |
 
 ### 2.2 生成层（generator/）
 
@@ -95,12 +96,6 @@ TaskRecord:
     status_to: str       # 新状态
     updated_at: datetime # 变更时间
 
-# 消息记录
-MessageRecord:
-    sender: str          # 飞书用户名
-    content: str         # 消息内容（纯文本）
-    timestamp: datetime  # 发送时间
-    chat_name: str       # 群名称
 ```
 
 ### 3.2 生成层输入/输出
@@ -112,7 +107,6 @@ MemberReport:
     github_username: str            # GitHub 用户名
     commits: list[CommitRecord]     # 代码提交
     tasks: list[TaskRecord]         # 任务变更
-    messages: list[MessageRecord]   # 相关消息
 
 # 日报（生成层输出）
 DailyReport:
@@ -132,10 +126,8 @@ DailyReport:
 members:
   - name: "张三"
     github: "zhangsan"
-    lark: "zhangsan@company.com"
   - name: "李四"
     github: "lisi-dev"
-    lark: "lisi@company.com"
 ```
 
 ## 4. 接口契约
@@ -149,8 +141,6 @@ def collect(repos: list[str], since: datetime, until: datetime) -> list[CommitRe
 # lark_task.py
 def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecord]
 
-# lark_msg.py
-def collect(chat_id: str, keywords: list[str], since: datetime, until: datetime) -> list[MessageRecord]
 ```
 
 ### 4.2 生成层接口

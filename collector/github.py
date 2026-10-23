@@ -19,6 +19,7 @@ REQUEST_TIMEOUT_SECONDS = 30.0
 RATE_LIMIT_RETRIES = 3
 
 logger = get_logger("collector.github")
+last_collection_failed = False
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,8 @@ class CommitRecord:
 
 def collect(repos: list[str], since: datetime, until: datetime) -> list[CommitRecord]:
     """获取各仓库在 [since, until] 内的 commit，失败时返回空列表并记录错误日志。"""
+    global last_collection_failed
+    last_collection_failed = False
     headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
@@ -44,20 +47,29 @@ def collect(repos: list[str], since: datetime, until: datetime) -> list[CommitRe
 
     records: list[CommitRecord] = []
     try:
+        client_options = {
+            "base_url": GITHUB_API_BASE,
+            "headers": headers,
+            "timeout": REQUEST_TIMEOUT_SECONDS,
+            "trust_env": False,
+        }
+        if os.environ.get("APP_HTTP_PROXY"):
+            client_options["proxy"] = os.environ["APP_HTTP_PROXY"]
         with httpx.Client(
-            base_url=GITHUB_API_BASE,
-            headers=headers,
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            **client_options,
         ) as client:
             for repo in repos:
                 repo_records = _collect_repo(client, repo, since, until)
                 if repo_records is None:
+                    last_collection_failed = True
                     return []
                 records.extend(repo_records)
     except httpx.TimeoutException:
+        last_collection_failed = True
         logger.error("GitHub API 超时，已重试 %s 次仍失败", API_TIMEOUT_RETRIES)
         return []
     except Exception as exc:
+        last_collection_failed = True
         logger.error("GitHub 采集失败: %s", exc)
         return []
     return records

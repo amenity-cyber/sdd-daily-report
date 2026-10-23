@@ -20,6 +20,7 @@ TOKEN_PATH = "/open-apis/auth/v3/tenant_access_token/internal"
 REQUEST_TIMEOUT_SECONDS = 30.0
 
 logger = get_logger("collector.lark_task")
+last_collection_failed = False
 
 
 @dataclass(frozen=True)
@@ -37,23 +38,29 @@ def _parse_json(resp: httpx.Response) -> dict:
 
 
 def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecord]:
+    global last_collection_failed
+    last_collection_failed = False
     app_id = os.environ.get("LARK_APP_ID")
     app_secret = os.environ.get("LARK_APP_SECRET")
     if not app_id or not app_secret:
+        last_collection_failed = True
         logger.error("缺少环境变量 LARK_APP_ID 或 LARK_APP_SECRET")
         return []
 
     try:
+        client_options = {"timeout": REQUEST_TIMEOUT_SECONDS, "trust_env": False, "headers": {"Accept-Charset": "utf-8"}}
+        if os.environ.get("APP_HTTP_PROXY"):
+            client_options["proxy"] = os.environ["APP_HTTP_PROXY"]
         with httpx.Client(
             base_url=LARK_API_BASE,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-            headers={"Accept-Charset": "utf-8"},
+            **client_options,
         ) as client:
             # 1. 拿 token
             resp = client.post(TOKEN_PATH, json={"app_id": app_id, "app_secret": app_secret})
             token_data = _parse_json(resp)
             token = token_data.get("tenant_access_token")
             if not token:
+                last_collection_failed = True
                 logger.error(f"获取 token 失败: {token_data}")
                 return []
 
@@ -63,6 +70,7 @@ def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecor
             resp = client.get("/open-apis/task/v2/tasklists", headers=headers, params={"page_size": 50})
             data = _parse_json(resp)
             if data.get("code") != 0:
+                last_collection_failed = True
                 logger.error(f"列出任务清单失败: {data}")
                 return []
             tasklists = data.get("data", {}).get("items", [])
@@ -79,6 +87,7 @@ def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecor
                 )
                 data2 = _parse_json(resp2)
                 if data2.get("code") != 0:
+                    last_collection_failed = True
                     logger.error(f"列出清单 {tl_guid} 的任务失败: {data2}")
                     continue
                 STATUS_MAP = {
@@ -87,7 +96,25 @@ def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecor
                     "done": "已完成",
                     "completed": "已完成",
                 }
-                for task in data2.get("data", {}).get("items", []):
+                for task_stub in data2.get("data", {}).get("items", []):
+                    task = task_stub
+                    task_guid = task_stub.get("guid")
+                    if task_guid and _task_timestamp(task) is None:
+                        detail_response = client.get(
+                            f"/open-apis/task/v2/tasks/{task_guid}", headers=headers
+                        )
+                        detail_payload = _parse_json(detail_response)
+                        if detail_payload.get("code") == 0:
+                            detail_data = detail_payload.get("data", {})
+                            task_detail = detail_data.get("task", detail_data)
+                            task = {**task_stub, **task_detail} if isinstance(task_detail, dict) else task_stub
+                        else:
+                            logger.warning("获取任务详情失败，跳过无时间戳任务")
+                    # The endpoint returns whole task lists; only include tasks whose
+                    # update/create timestamp falls inside the requested report window.
+                    updated_at = _task_timestamp(task)
+                    if updated_at is None or not (since.timestamp() <= updated_at.timestamp() <= until.timestamp()):
+                        continue
                     # 提取状态
                     raw_status = str(task.get("status", "")).lower()
                     status_cn = STATUS_MAP.get(raw_status, raw_status)
@@ -107,10 +134,27 @@ def collect(project_id: str, since: datetime, until: datetime) -> list[TaskRecor
                         title=fixed_title,
                         status_from="",
                         status_to=status_cn,
-                        updated_at=datetime.now(),
+                        updated_at=updated_at,
                     ))
             logger.info(f"飞书任务采集到 {len(records)} 条")
             return records
     except Exception as exc:
+        last_collection_failed = True
         logger.error(f"飞书任务采集失败: {exc}")
         return []
+
+
+def _task_timestamp(task: dict) -> datetime | None:
+    """Parse Feishu task timestamp fields (milliseconds, seconds, or ISO-8601)."""
+    raw = next((task.get(key) for key in ("update_time", "updated_at", "create_time", "created_at") if task.get(key)), None)
+    if raw is None:
+        return None
+    try:
+        if isinstance(raw, (int, float)) or str(raw).isdigit():
+            value = float(raw)
+            if value > 10_000_000_000:
+                value /= 1000
+            return datetime.fromtimestamp(value).astimezone()
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return None

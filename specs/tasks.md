@@ -78,27 +78,15 @@
 
 ---
 
-## Task 5: 实现飞书消息采集模块
+## Task 5: 实现飞书消息采集模块（已取消）
 
-**描述**：调用飞书开放平台 API 获取指定群的消息记录，按关键词过滤，返回 MessageRecord 列表。
-
-**输入**：design.md §3（MessageRecord 数据模型）, design.md §4.1（采集层接口契约）
-**输出**：collector/lark_msg.py + tests/test_lark_msg.py
-**依赖**：Task 2
-
-**验收标准**：
-- [ ] collect() 函数签名符合 design.md §4.1 的接口定义
-- [ ] 返回的每个 MessageRecord 包含全部 4 个字段且类型正确
-- [ ] 关键词过滤正确：只返回包含指定关键词的消息
-- [ ] 敏感关键词（薪资、绩效等）被正确过滤，不出现在结果中
-- [ ] 飞书 token 过期时自动刷新后重试 1 次
-- [ ] 使用 mock 数据的单元测试全部通过
+**状态（2026-10-23）**：根据后续范围修订，本任务不再属于当前实现。飞书群消息采集器及其测试已移除；日报不包含群聊内容。
 
 ---
 
 ## Task 6: 实现日报生成模块
 
-**描述**：接收各成员的采集数据，按"代码提交 → 任务进展 → 协作沟通"组织日报内容，输出 Markdown 和 HTML 格式。
+**描述**：接收各成员的采集数据，按"代码提交 → 任务进展"组织日报内容，输出 Markdown 和 HTML 格式。
 
 **输入**：design.md §3（MemberReport, DailyReport 数据模型）, design.md §4.2（生成层接口契约）
 **输出**：generator/formatter.py, generator/template.py + tests/test_generator.py
@@ -106,7 +94,7 @@
 
 **验收标准**：
 - [ ] generate() 函数签名符合 design.md §4.2 的接口定义
-- [ ] 输出的 DailyReport.markdown 包含三个部分标题
+- [ ] 输出的 DailyReport.markdown 包含代码提交、任务进展两部分
 - [ ] 输出的 DailyReport.html 可被浏览器正确渲染
 - [ ] 某成员当天无任何记录时，日报中显示"今日无记录"
 - [ ] 某数据源采集失败时，日报中标注"数据获取失败"
@@ -230,3 +218,6 @@
 - [x] Web5：完整 Python 回归、独立审查及最终验证材料；70 项 Python 测试、16 项浏览器检查通过。
 
 本轮设计与计划已由用户批准；此前 Task-Front1 的 OpenDesign 生成过程以已有迭代报告和 Git 记录为依据，本轮没有重新运行 OpenDesign。
+## 当前实现范围修订（2026-10-23）
+
+后续迭代已取消 Task 5 所述飞书群消息采集。实现和验收以 `specs/proposal.md` 的当前迭代修订为准：日报、摘要和图表只包含代码提交与飞书任务；飞书机器人推送不受影响。

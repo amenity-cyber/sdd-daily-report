@@ -9,7 +9,6 @@
       --accent:  oklch(58% 0.16 145);    /* 品牌强调色（≤2 处/屏） */
       --chart-commit: oklch(62% 0.16 250);
       --chart-task: oklch(68% 0.14 165);
-      --chart-discussion: oklch(70% 0.15 50);
 
       /* 状态语义色（状态胶囊使用，不计入品牌强调色预算） */
       --ok:   oklch(56% 0.14 150);       /* 已完成 */
@@ -213,7 +212,6 @@
     .donut-segment { stroke-linecap: butt; }
     .chart-commit { stroke: var(--chart-commit); color: var(--chart-commit); }
     .chart-task { stroke: var(--chart-task); color: var(--chart-task); }
-    .chart-discussion { stroke: var(--chart-discussion); color: var(--chart-discussion); }
     .donut-total { fill: var(--fg); font: 650 25px var(--font-display); text-anchor: middle; }
     .donut-unit { fill: var(--muted); font: 11px var(--font-body); text-anchor: middle; }
     .chart-legend { display: grid; gap: 13px; padding: 0; margin: 0; list-style: none; }
@@ -222,7 +220,6 @@
     .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
     .legend-dot.chart-commit { background: var(--chart-commit); }
     .legend-dot.chart-task { background: var(--chart-task); }
-    .legend-dot.chart-discussion { background: var(--chart-discussion); }
     .weekly-chart svg { display: block; width: 100%; overflow: visible; }
     .chart-grid-line { stroke: var(--border); stroke-dasharray: 3 5; }
     .chart-axis-label, .chart-date-label { fill: var(--muted); font: 10px var(--font-mono); }
@@ -326,7 +323,7 @@
     .icon-btn:hover { color: var(--fg); background: var(--fg-soft); border-color: color-mix(in oklch, var(--fg) 40%, var(--border)); }
     .modal-body { padding: 24px; display: flex; flex-direction: column; gap: var(--gap-lg); }
     .modal-foot {
-      display: flex; align-items: center; justify-content: flex-end; gap: var(--gap-sm);
+      display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--gap-sm);
       padding: 16px 24px; border-top: 1px solid var(--border); background: var(--fg-softer);
     }
 
@@ -392,6 +389,8 @@
 
     /* 联调状态与正文 */
     .btn:disabled { opacity: 0.65; cursor: wait; }
+    .btn.is-sent:disabled { cursor: default; }
+    .btn[hidden] { display: none !important; }
     .load-status { color: var(--muted); margin-bottom: var(--gap-md); }
     .load-status[hidden], .load-error[hidden] { display: none; }
     .load-error {

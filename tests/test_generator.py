@@ -6,7 +6,6 @@ import pytest
 from generator.formatter import (
     CommitRecord,
     TaskRecord,
-    MessageRecord,
     MemberReport,
     DailyReport,
     generate,
@@ -37,37 +36,28 @@ def make_task():
     )
 
 
-def make_message():
-    return MessageRecord(
-        sender="zhangsan@company.com",
-        content="登录接口已经联调通过",
-        timestamp=datetime(2026, 9, 24, 15, 0, 0),
-        chat_name="研发群",
-    )
-
-
 # ===== 验收标准 1：函数签名符合 §4.2 =====
 
 def test_generate_signature():
     """generate() 参数和返回类型符合 design.md §4.2"""
     members = [MemberReport(name="张三", github_username="zhangsan",
-                            commits=[], tasks=[], messages=[])]
+                            commits=[], tasks=[])]
     report = generate(members=members, date=date(2026, 9, 24), team_name="研发团队")
     assert isinstance(report, DailyReport)
     assert report.team_name == "研发团队"
     assert report.date == date(2026, 9, 24)
 
 
-# ===== 验收标准 2：markdown 含三个部分标题 =====
+# ===== 验收标准 2：markdown 含两个部分标题 =====
 
 def test_markdown_contains_three_sections():
     members = [MemberReport(name="张三", github_username="zhangsan",
-                            commits=[make_commit()], tasks=[make_task()], messages=[make_message()])]
+                            commits=[make_commit()], tasks=[make_task()])]
     report = generate(members, date(2026, 9, 24), "研发团队")
 
     assert "代码提交" in report.markdown
     assert "任务进展" in report.markdown
-    assert "协作沟通" in report.markdown
+    assert "协作沟通" not in report.markdown
     assert "feat: add login" in report.markdown
     assert "实现登录功能" in report.markdown
 
@@ -76,7 +66,7 @@ def test_markdown_contains_three_sections():
 
 def test_html_renderable():
     members = [MemberReport(name="张三", github_username="zhangsan",
-                            commits=[make_commit()], tasks=[], messages=[])]
+                            commits=[make_commit()], tasks=[])]
     report = generate(members, date(2026, 9, 24), "研发团队")
 
     assert "<html" in report.html
@@ -88,15 +78,15 @@ def test_html_renderable():
 
 def test_empty_member_shows_no_record():
     members = [MemberReport(name="张三", github_username="zhangsan",
-                            commits=[], tasks=[], messages=[])]
+                            commits=[], tasks=[])]
     report = generate(members, date(2026, 9, 24), "研发团队")
 
     assert "今日无代码提交记录" in report.markdown
     assert "今日无任务变更记录" in report.markdown
-    assert "今日无协作沟通记录" in report.markdown
+    assert "协作沟通" not in report.markdown
     assert "今日无代码提交记录" in report.html
     assert "今日无任务变更记录" in report.html
-    assert "今日无协作沟通记录" in report.html
+    assert "协作沟通" not in report.html
 
 
 # ===== 验收标准 5：数据源失败显示"数据获取失败" =====
@@ -104,7 +94,7 @@ def test_empty_member_shows_no_record():
 def test_failed_source_shows_error_label():
     # commits=None 表示 GitHub 采集失败
     members = [MemberReport(name="张三", github_username="zhangsan",
-                            commits=None, tasks=[], messages=[])]
+                            commits=None, tasks=[])]
     report = generate(members, date(2026, 9, 24), "研发团队")
 
     assert "数据获取失败" in report.markdown
@@ -115,7 +105,7 @@ def test_failed_source_shows_error_label():
 
 def test_markdown_to_html_conversion():
     members = [MemberReport(name="张三", github_username="zhangsan",
-                            commits=[make_commit()], tasks=[make_task()], messages=[make_message()])]
+                            commits=[make_commit()], tasks=[make_task()])]
     report = generate(members, date(2026, 9, 24), "研发团队")
 
     # markdown 是文本，html 是结构化标签

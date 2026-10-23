@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,14 +12,13 @@ import yaml
 from shared.errors import ConfigError
 
 _REQUIRED_TOP_LEVEL = ("team_name", "members", "github", "lark", "notify")
-_REQUIRED_MEMBER_FIELDS = ("name", "github", "lark")
+_REQUIRED_MEMBER_FIELDS = ("name", "github")
 
 
 @dataclass(frozen=True)
 class MemberConfig:
     name: str
     github: str
-    lark: str
 
 
 @dataclass(frozen=True)
@@ -29,8 +29,6 @@ class GitHubConfig:
 @dataclass(frozen=True)
 class LarkConfig:
     project_id: str
-    chat_id: str
-    keywords: list[str]
 
 
 @dataclass(frozen=True)
@@ -107,15 +105,7 @@ def _parse_github(raw: Any) -> GitHubConfig:
 
 def _parse_lark(raw: Any) -> LarkConfig:
     project_id = str(_require(raw, "project_id", "lark.project_id"))
-    chat_id = str(_require(raw, "chat_id", "lark.chat_id"))
-    keywords = _require(raw, "keywords", "lark.keywords")
-    if not isinstance(keywords, list) or not keywords:
-        raise ConfigError("配置缺少必填字段: lark.keywords")
-    return LarkConfig(
-        project_id=project_id,
-        chat_id=chat_id,
-        keywords=[str(item) for item in keywords],
-    )
+    return LarkConfig(project_id=project_id)
 
 
 def _parse_notify(raw: Any) -> NotifyConfig:
@@ -134,8 +124,16 @@ def _parse_notify(raw: Any) -> NotifyConfig:
 def load_config(path: str | Path = "config.yaml") -> AppConfig:
     """读取 YAML 配置，校验必填字段，并缓存为全局配置。"""
     global _config
-    config_path = Path(path)
-    data = _load_yaml(config_path)
+    config_text = os.environ.get("APP_CONFIG_YAML")
+    if config_text:
+        try:
+            data = yaml.safe_load(config_text)
+        except yaml.YAMLError as exc:
+            raise ConfigError("环境变量 APP_CONFIG_YAML 解析失败") from exc
+        if not isinstance(data, dict):
+            raise ConfigError("环境变量 APP_CONFIG_YAML 格式不正确，应为 YAML 映射")
+    else:
+        data = _load_yaml(Path(path))
 
     for key in _REQUIRED_TOP_LEVEL:
         _require(data, key, key)

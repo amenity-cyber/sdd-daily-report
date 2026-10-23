@@ -16,7 +16,7 @@ let server, browser;
 
 function startServer(db) {
   return new Promise((resolve, reject) => {
-    const child = spawn(python, ['-B', 'web_server.py', '--port', '0', '--db', db], {
+    const child = spawn(python, ['-B', 'web_server.py', '--mock', '--port', '0', '--db', db], {
       cwd: root, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -60,6 +60,14 @@ async function check(name, fn) {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base);
 
+  await check('server declares Mock mode and does not offer real email sending', async () => {
+    const health = await (await context.request.get(base + '/api/health')).json();
+    assert.equal(health.mode, 'mock');
+    await page.locator('#modeBadge').waitFor();
+    await page.waitForFunction(() => document.querySelector('#modeBadge').textContent.includes('模拟数据'));
+    assert.equal(await page.locator('#modalEmail').isHidden(), true);
+  });
+
   await check('empty history comes from API', async () => {
     await page.locator('#emptyState').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#taskBody tr').count(), 0);
@@ -69,21 +77,58 @@ async function check(name, fn) {
   await check('generate produces persisted complete Markdown', async () => {
     await page.locator('#createBtn').click();
     await page.locator('#modalBackdrop').waitFor({ state: 'visible' });
-    for (const heading of ['代码提交', '任务进展', '协作沟通']) assert.match(await page.locator('#modalBody').innerText(), new RegExp(heading));
+    for (const heading of ['代码提交', '任务进展']) assert.match(await page.locator('#modalBody').innerText(), new RegExp(heading));
+    assert.doesNotMatch(await page.locator('#modalBody').innerText(), /协作沟通|飞书讨论/);
     const rows = await (await context.request.get(base + '/api/reports')).json();
     assert.equal(rows.reports.length, 1);
     report = (await (await context.request.get(base + '/api/reports/' + rows.reports[0].id)).json()).report;
     assert.equal(await page.locator('#reportMarkdown').textContent(), report.markdown);
+    assert.equal(await page.locator('#modalEmail').isHidden(), true);
+  });
+  await check('mock mode rejects email delivery', async () => {
+    const response = await context.request.post(base + `/api/reports/${report.id}/email`, { data: {} });
+    assert.equal(response.status(), 409);
+    assert.match((await response.json()).error, /模拟模式/);
+  });
+  await page.locator('#modalClose').click();
+  await check('real report detail offers one-click email and reflects success', async () => {
+    let requests = 0;
+    await page.route(base + `/api/reports/${report.id}`, async route => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.report.mode = 'real';
+      payload.report.emailSent = false;
+      await route.fulfill({ response, body: JSON.stringify(payload) });
+    });
+    await page.route(base + `/api/reports/${report.id}/email`, async route => {
+      requests += 1;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"sent":true}' });
+    });
+    await page.locator('[data-view]').first().click();
+    await page.locator('#modalEmail').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#modalEmail').innerText(), '发送邮件');
+    await page.locator('#modalEmail').click();
+    await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('邮件已提交至 SMTP 服务器'));
+    assert.equal(await page.locator('#modalEmail').innerText(), '已提交');
+    assert.equal(await page.locator('#modalEmail').isDisabled(), true);
+    assert.equal(await page.locator('#modalEmail').evaluate(el => getComputedStyle(el).cursor), 'default');
+    assert.equal(requests, 1);
+    await page.locator('#modalClose').click();
+    await page.unroute(base + `/api/reports/${report.id}`);
+    await page.unroute(base + `/api/reports/${report.id}/email`);
   });
   await check('activity charts render source mix and a seven-day trend', async () => {
     await page.locator('#todayDonut svg').waitFor();
     assert.match(await page.locator('#todayDonut').getAttribute('aria-label'), /3 项活动/);
     assert.equal(await page.locator('#todayDonut .donut-segment').count(), 3);
-    assert.match(await page.locator('#todayLegend').innerText(), /代码提交[\s\S]*飞书任务[\s\S]*飞书讨论/);
+    assert.match(await page.locator('#todayLegend').innerText(), /代码提交[\s\S]*飞书任务/);
+    assert.doesNotMatch(await page.locator('#todayLegend').innerText(), /飞书讨论/);
     assert.equal(await page.locator('#weeklyChart .chart-point').count(), 7);
     assert.match(await page.locator('#weeklyChart').getAttribute('aria-label'), /3 项活动/);
   });
   await check('copy writes actual Markdown to clipboard', async () => {
+    await page.locator('[data-view]').first().click();
+    await page.locator('#modalBackdrop').waitFor({ state: 'visible' });
     await page.locator('#modalCopy').click();
     await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('已复制'));
     // Windows 剪贴板把 LF 转成 CRLF；正文比较只归一化平台换行。

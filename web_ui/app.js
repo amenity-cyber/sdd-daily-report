@@ -11,6 +11,8 @@ let tasks = [];
 let currentFilter = 'all';
 let currentQuery = '';
 let currentReport = null;
+let serviceMode = 'unknown';
+let sendingEmail = false;
 let generating = false;
 let toastTimer;
 let detailVersion = 0;
@@ -19,7 +21,6 @@ let returnFocus = null;
 const ACTIVITY_TYPES = [
   { key: 'commits', label: '代码提交', color: 'commit' },
   { key: 'tasks', label: '飞书任务', color: 'task' },
-  { key: 'discussions', label: '飞书讨论', color: 'discussion' },
 ];
 
 function esc(value) {
@@ -28,7 +29,8 @@ function esc(value) {
 
 async function api(path, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  // Real collection and SMTP each make several sequential network calls.
+  const timeout = setTimeout(() => controller.abort(), 180000);
   try {
     const response = await fetch(path, { ...options, signal: controller.signal });
     const data = await response.json();
@@ -112,6 +114,15 @@ function showLoadError(message) {
 }
 
 function renderAnalytics(analytics) {
+  const sourceStatus = analytics.sources || {};
+  const failedSources = Object.entries({
+    github: 'GitHub API', feishu_tasks: '飞书任务',
+  }).filter(([key]) => sourceStatus[key] === false).map(([, label]) => label);
+  if (sourceStatus.local_git) failedSources.push('当前只使用本机 Git 克隆记录补充提交');
+  $('#sourceWarning').hidden = failedSources.length === 0;
+  $('#sourceWarning').textContent = failedSources.length
+    ? `部分实时数据源不可用（${failedSources.join('、')}），图表数据可能不完整。请检查代理/网络、API 权限和服务日志。`
+    : '';
   const today = analytics.today;
   const total = today.total;
   $('#chartTodayLabel').textContent = today.date;
@@ -167,6 +178,26 @@ async function loadAnalytics() {
   }
 }
 
+async function loadHealth() {
+  try {
+    const { mode, source, sources = {} } = await api('/api/health');
+    serviceMode = mode;
+    const badge = $('#modeBadge');
+    badge.textContent = mode === 'real' ? '真实数据 · 本地联调' : '模拟数据 · 本地联调';
+    badge.classList.toggle('pill--warn', mode !== 'real');
+    const configured = [sources.github && 'GitHub', sources.feishu && '飞书', sources.email && '邮件'].filter(Boolean);
+    $('#sourceDescription').textContent = mode === 'real'
+      ? `实时数据源：${source || configured.join(' / ') || '请检查配置'}。${configured.length ? `已配置：${configured.join('、')}。` : ''}邮件发送仅在点击后执行。`
+      : '当前使用演示数据，保存到本机，不连接外部服务。';
+    $('#pageLead').textContent = mode === 'real'
+      ? '从 GitHub 与飞书实时采集工作记录，生成并保存日报；同一天再次生成会更新当日日报。'
+      : '从模拟工作记录生成完整日报，保存在本机，随时查看、复制或导出。同一天再次生成会更新当日日报。';
+  } catch (error) {
+    $('#modeBadge').textContent = '服务连接失败';
+    $('#sourceDescription').textContent = error.message;
+  }
+}
+
 async function loadReports() {
   const version = ++listVersion;
   $('#loadError').hidden = true;
@@ -199,9 +230,14 @@ function showDetail(report, focusTarget) {
   $('#modalBadge').textContent = status.label;
   $('#modalTitle').textContent = report.name;
   $('#modalSubtitle').textContent = `DR-${report.id} · ${report.owner}`;
+  $('#modalEmail').hidden = report.mode !== 'real';
+  $('#modalEmail').disabled = Boolean(report.emailSent);
+  $('#modalEmail').classList.toggle('is-sent', Boolean(report.emailSent));
+  $('#modalEmail').textContent = report.emailSent ? '已提交' : '发送邮件';
+  if (report.emailSent) currentReport.emailSent = true;
   $('#modalBody').innerHTML = `
     <div class="pipeline" aria-label="处理结果">
-      <div class="step is-ok"><div class="step-top"><span class="step-dot"></span><span class="step-name">模拟采集</span></div><p class="step-mod">使用演示工作记录</p></div>
+      <div class="step is-ok"><div class="step-top"><span class="step-dot"></span><span class="step-name">${report.mode === 'real' ? '实时采集' : '模拟采集'}</span></div><p class="step-mod">${report.mode === 'real' ? '读取已配置的 GitHub / 飞书数据' : '使用演示工作记录'}</p></div>
       <div class="step is-ok"><div class="step-top"><span class="step-dot"></span><span class="step-name">生成日报</span></div><p class="step-mod">完整 Markdown 正文</p></div>
       <div class="step is-ok"><div class="step-top"><span class="step-dot"></span><span class="step-name">本地保存</span></div><p class="step-mod">可刷新、复制与导出</p></div>
     </div>
@@ -310,6 +346,32 @@ function exportReport() {
   toast('已发起 Markdown 下载');
 }
 
+async function emailReport() {
+  if (!currentReport || sendingEmail) return;
+  sendingEmail = true;
+  const button = $('#modalEmail');
+  button.disabled = true;
+  button.textContent = '正在发送…';
+  try {
+    await api(`/api/reports/${encodeURIComponent(currentReport.id)}/email`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    currentReport.emailSent = true;
+    button.textContent = '已提交';
+    button.disabled = true;
+    button.classList.add('is-sent');
+    toast('邮件已提交至 SMTP 服务器；请检查收件箱或垃圾邮件');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    sendingEmail = false;
+    if (currentReport && !currentReport.emailSent) {
+      button.disabled = false;
+      button.textContent = '发送邮件';
+    }
+  }
+}
+
 document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => {
   currentFilter = button.dataset.filter;
   syncNavActive(); saveState(); renderTable();
@@ -333,20 +395,22 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') closeDetail();
   if (event.key === 'Tab' && !$('#modalBackdrop').hidden) {
     const first = $('#modalClose');
-    const last = $('#modalExport');
+    const last = $('#modalEmail').hidden ? $('#modalExport') : $('#modalEmail');
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   }
 });
 $('#modalCopy').addEventListener('click', copyReport);
 $('#modalExport').addEventListener('click', exportReport);
-$('#aboutBtn').addEventListener('click', () => toast('模拟工作记录生成日报，保存于本机；演示不发送外部通知。'));
+$('#modalEmail').addEventListener('click', emailReport);
+$('#aboutBtn').addEventListener('click', () => toast(serviceMode === 'real' ? '日报由已配置的数据源生成；邮件仅在点击发送后发出。' : '当前使用模拟工作记录生成日报，保存于本机。'));
 
 loadState();
 if (location.protocol === 'file:') {
   showLoadError('请先运行本地服务：python web_server.py，然后访问 http://127.0.0.1:8765');
   $('#retryBtn').hidden = true;
 } else {
+  loadHealth();
   loadReports();
   loadAnalytics();
 }

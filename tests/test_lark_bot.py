@@ -11,7 +11,7 @@ def make_report():
     return DailyReport(
         date=date(2026, 9, 24),
         team_name="研发团队",
-        members=[MemberReport(name="张三", github_username="zhangsan", commits=[], tasks=[], messages=[])],
+        members=[MemberReport(name="张三", github_username="zhangsan", commits=[], tasks=[])],
         generated_at=datetime(2026, 9, 24, 18, 0, 0),
         markdown="# 日报\n\n内容",
         html="<html></html>",

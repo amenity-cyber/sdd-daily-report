@@ -16,9 +16,8 @@ MARKDOWN_TEMPLATE = """# {{ team_name }} 工作日报
 |------|------|
 | 代码提交 | {% if m.commits %}{{ m.commits|length }} 次{% else %}—{% endif %} |
 | 任务更新 | {% if m.tasks %}{{ m.tasks|length }} 项{% else %}—{% endif %} |
-| 协作讨论 | {% if m.messages %}{{ m.messages|length }} 条{% else %}—{% endif %} |
 
-> **📌 今日总结**：{% if m.commits and m.commits|length > 0 %}共完成 {{ m.commits|length }} 次代码提交{% else %}今日无代码提交{% endif %}，{% if m.tasks and m.tasks|length > 0 %}{{ m.tasks|length }} 项任务有更新{% else %}无任务变更{% endif %}，{% if m.messages and m.messages|length > 0 %}{{ m.messages|length }} 条协作讨论{% else %}无协作记录{% endif %}，整体进展{% if m.commits and m.commits|length > 5 %}活跃{% elif m.commits and m.commits|length > 0 %}顺利{% else %}平稳{% endif %}。
+> **📌 今日总结**：{% if m.commits and m.commits|length > 0 %}共完成 {{ m.commits|length }} 次代码提交{% else %}今日无代码提交{% endif %}，{% if m.tasks and m.tasks|length > 0 %}{{ m.tasks|length }} 项任务有更新{% else %}无任务变更{% endif %}，整体进展{% if m.commits and m.commits|length > 5 %}活跃{% elif m.commits and m.commits|length > 0 %}顺利{% else %}平稳{% endif %}。
 
 ### 📝 一、代码提交
 
@@ -57,26 +56,12 @@ MARKDOWN_TEMPLATE = """# {{ team_name }} 工作日报
 > 今日无任务变更记录
 {% endif %}
 
-### 💬 三、协作沟通
-
-{% if m.messages and m.messages|length > 0 %}
-今日群内共 **{{ m.messages|length }}** 条相关讨论：
-
-{% for msg in m.messages %}
-- {{ msg.content }}
-{% endfor %}
-{% elif m.messages is none %}
-> ⚠️ 飞书消息数据获取失败
-{% else %}
-> 今日无协作沟通记录
-{% endif %}
-
 ---
 
 {% endfor %}
 
 📌 **日报说明**
-本日报由 **SDD 智能日报生成器** 自动生成，数据来源：GitHub API + 飞书开放平台 API。
+本日报由 **SDD 智能日报生成器** 自动生成，数据来源：GitHub API（不可用时使用匹配仓库的本地 Git 历史）+ 飞书任务 API。
 
 *—— 系统自动发送，请勿直接回复 ——*
 """
@@ -125,14 +110,10 @@ li { margin: 8px 0; color: #24292f; }
         <div class="stat-num">{% if m.tasks %}{{ m.tasks|length }}{% else %}0{% endif %}</div>
         <div class="stat-label">任务更新</div>
     </div>
-    <div class="stat-card">
-        <div class="stat-num">{% if m.messages %}{{ m.messages|length }}{% else %}0{% endif %}</div>
-        <div class="stat-label">协作讨论</div>
-    </div>
 </div>
 
 <div class="summary-box">
-    <strong>📌 今日总结：</strong>{% if m.commits and m.commits|length > 0 %}共完成 {{ m.commits|length }} 次代码提交{% else %}今日无代码提交{% endif %}，{% if m.tasks and m.tasks|length > 0 %}{{ m.tasks|length }} 项任务有更新{% else %}无任务变更{% endif %}，{% if m.messages and m.messages|length > 0 %}{{ m.messages|length }} 条协作讨论{% else %}无协作记录{% endif %}，整体进展{% if m.commits and m.commits|length > 5 %}活跃{% elif m.commits and m.commits|length > 0 %}顺利{% else %}平稳{% endif %}。
+    <strong>📌 今日总结：</strong>{% if m.commits and m.commits|length > 0 %}共完成 {{ m.commits|length }} 次代码提交{% else %}今日无代码提交{% endif %}，{% if m.tasks and m.tasks|length > 0 %}{{ m.tasks|length }} 项任务有更新{% else %}无任务变更{% endif %}，整体进展{% if m.commits and m.commits|length > 5 %}活跃{% elif m.commits and m.commits|length > 0 %}顺利{% else %}平稳{% endif %}。
 </div>
 
 <h3>📝 一、代码提交</h3>
@@ -172,25 +153,11 @@ li { margin: 8px 0; color: #24292f; }
 <p class="empty">今日无任务变更记录</p>
 {% endif %}
 
-<h3>💬 三、协作沟通</h3>
-{% if m.messages and m.messages|length > 0 %}
-<p class="summary">今日群内共 {{ m.messages|length }} 条相关讨论。</p>
-<ul>
-{% for msg in m.messages %}
-<li>{{ msg.content }}</li>
-{% endfor %}
-</ul>
-{% elif m.messages is none %}
-<p class="error">⚠️ 飞书消息数据获取失败</p>
-{% else %}
-<p class="empty">今日无协作沟通记录</p>
-{% endif %}
-
 {% endfor %}
 
 <div class="footer">
     <div class="footer-title">📌 日报说明</div>
-    本日报由 <strong>SDD 智能日报生成器</strong> 自动生成，数据来源：GitHub API + 飞书开放平台 API。
+    本日报由 <strong>SDD 智能日报生成器</strong> 自动生成，数据来源：GitHub API（不可用时使用匹配仓库的本地 Git 历史）+ 飞书任务 API。
     <small>—— 系统自动发送，请勿直接回复 ——</small>
 </div>
 </body>
